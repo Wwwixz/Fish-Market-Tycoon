@@ -1,16 +1,34 @@
 
 extends RefCounted
 
+
 static func material(
 	color: Color,
 	unshaded: bool = false
 ) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
-	m.roughness = 0.85
 
 	if unshaded:
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.roughness = 1.0
+		return m
+
+	var saturation: float = color.s
+	var brightness: float = color.v
+
+	if saturation < 0.18 and brightness > 0.25:
+		m.metallic = 0.22
+		m.roughness = 0.48
+	elif saturation < 0.3 and brightness < 0.65:
+		m.metallic = 0.08
+		m.roughness = 0.66
+	else:
+		m.metallic = 0.0
+		m.roughness = 0.83
+
+	m.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 
 	return m
 
@@ -23,10 +41,14 @@ static func box(
 ) -> MeshInstance3D:
 	var n := MeshInstance3D.new()
 	var mesh := BoxMesh.new()
+
 	mesh.size = size
 	n.mesh = mesh
 	n.position = pos
 	n.material_override = material(color)
+
+	n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
 	parent.add_child(n)
 	return n
 
@@ -39,11 +61,18 @@ static func sphere(
 ) -> MeshInstance3D:
 	var n := MeshInstance3D.new()
 	var mesh := SphereMesh.new()
+
 	mesh.radius = radius
 	mesh.height = radius * 2.0
+	mesh.radial_segments = 16
+	mesh.rings = 8
+
 	n.mesh = mesh
 	n.position = pos
 	n.material_override = material(color)
+
+	n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
 	parent.add_child(n)
 	return n
 
@@ -57,12 +86,18 @@ static func cylinder(
 ) -> MeshInstance3D:
 	var n := MeshInstance3D.new()
 	var mesh := CylinderMesh.new()
+
 	mesh.top_radius = radius
 	mesh.bottom_radius = radius
 	mesh.height = height
+	mesh.radial_segments = 16
+
 	n.mesh = mesh
 	n.position = pos
 	n.material_override = material(color)
+
+	n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
 	parent.add_child(n)
 	return n
 
@@ -74,14 +109,26 @@ static func label(
 	size: int = 44
 ) -> Label3D:
 	var n := Label3D.new()
+
 	n.text = value
 	n.position = pos
-	n.font_size = size
-	n.pixel_size = 0.008
+
+	n.font_size = clampi(size, 30, 48)
+	n.pixel_size = 0.009
+
 	n.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	n.modulate = Color("#F6EEE1")
-	n.outline_modulate = Color("#243B42")
-	n.outline_size = 9
+
+	n.modulate = Color("#F9F6ED")
+	n.outline_modulate = Color("#24363B")
+	n.outline_size = 7
+
+	n.no_depth_test = false
+	n.fixed_size = false
+	n.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+
+	n.shaded = false
+	n.double_sided = true
+
 	parent.add_child(n)
 	return n
 
@@ -101,7 +148,7 @@ static func animated_person(
 	body.name = "AnimatedBody"
 	parent.add_child(body)
 
-	var shirt := cylinder(
+	cylinder(
 		body,
 		0.34,
 		0.8,
@@ -279,6 +326,8 @@ static func popup(
 		80
 	)
 
+	n.font_size = 65
+	n.pixel_size = 0.009
 	n.modulate = color
 	n.no_depth_test = true
 

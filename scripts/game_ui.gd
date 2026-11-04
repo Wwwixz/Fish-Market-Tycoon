@@ -13,6 +13,7 @@ const WARNING := Color("#D98E78")
 var state: Node
 var navigation: Node3D
 var workers: Node3D
+var progression: Node
 
 var root: Control
 var money: Label
@@ -23,6 +24,8 @@ var boat_progress: ProgressBar
 var task: Label
 var message: Label
 var stats: Label
+var xp_label: Label
+var xp_progress: ProgressBar
 
 var buttons: Array[Button] = []
 var notice_time: float = 0.0
@@ -34,12 +37,7 @@ var worker_names := [
     "Продавец"
 ]
 
-var worker_icons := [
-	"01",
-	"02",
-	"03",
-    "04"
-]
+var worker_icons := ["01", "02", "03", "04"]
 
 
 func setup(
@@ -65,9 +63,7 @@ func _style(
 	return s
 
 
-func _button_style(
-	color: Color
-) -> StyleBoxFlat:
+func _button_style(color: Color) -> StyleBoxFlat:
 	var s := _style(color, 9)
 	s.set_content_margin_all(9)
 	s.border_color = color.lightened(0.12)
@@ -116,15 +112,17 @@ func _section_title(
 func _ready() -> void:
 	root = Control.new()
 	root.name = "HUDRoot"
+	add_child(root)
+
 	root.set_anchors_and_offsets_preset(
 		Control.PRESET_FULL_RECT
 	)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(root)
 
 	_build_left()
 	_build_right()
 	_build_bottom()
+	_build_xp_panel()
 
 	if state != null:
 		state.notice.connect(_notice)
@@ -150,8 +148,7 @@ func _build_left() -> void:
 	money = _label(resource_stack, 29, GOLD)
 	money.text = "0 монет"
 
-	var separator := HSeparator.new()
-	resource_stack.add_child(separator)
+	resource_stack.add_child(HSeparator.new())
 
 	stocks = _label(resource_stack, 15)
 	stocks.custom_minimum_size.y = 105
@@ -159,10 +156,7 @@ func _build_left() -> void:
 	var boat_panel := _panel(left)
 	var boat_stack := _stack(boat_panel, 9)
 
-	_section_title(
-		boat_stack,
-        "МОРСКИЕ ЗАКАЗЫ"
-	)
+	_section_title(boat_stack, "МОРСКИЕ ЗАКАЗЫ")
 
 	boat_title = _label(boat_stack, 20)
 	boat_info = _label(boat_stack, 14, MUTED)
@@ -188,10 +182,7 @@ func _build_left() -> void:
 	var stats_panel := _panel(left)
 	var stats_stack := _stack(stats_panel, 7)
 
-	_section_title(
-		stats_stack,
-        "СТАТИСТИКА"
-	)
+	_section_title(stats_stack, "СТАТИСТИКА")
 
 	stats = _label(stats_stack, 14, MUTED)
 
@@ -230,18 +221,10 @@ func _build_right() -> void:
 
 	for i in range(4):
 		var row := VBoxContainer.new()
-		row.add_theme_constant_override(
-			"separation",
-			4
-		)
+		row.add_theme_constant_override("separation", 4)
 		stack.add_child(row)
 
-		var worker_title := _label(
-			row,
-			13,
-			MUTED
-		)
-
+		var worker_title := _label(row, 13, MUTED)
 		worker_title.text = (
 			worker_icons[i] + "  " + worker_names[i]
 		)
@@ -254,25 +237,10 @@ func _build_right() -> void:
 			15
 		)
 
-		b.add_theme_color_override(
-			"font_color",
-			BG
-		)
-
-		b.add_theme_color_override(
-			"font_hover_color",
-			BG
-		)
-
-		b.add_theme_color_override(
-			"font_pressed_color",
-			BG
-		)
-
-		b.add_theme_color_override(
-			"font_disabled_color",
-			MUTED
-		)
+		b.add_theme_color_override("font_color", BG)
+		b.add_theme_color_override("font_hover_color", BG)
+		b.add_theme_color_override("font_pressed_color", BG)
+		b.add_theme_color_override("font_disabled_color", MUTED)
 
 		b.add_theme_stylebox_override(
 			"normal",
@@ -329,10 +297,7 @@ func _build_bottom() -> void:
 	var stack := _stack(bottom, 5)
 
 	task = _label(stack, 15)
-	task.horizontal_alignment = (
-		HORIZONTAL_ALIGNMENT_CENTER
-	)
-
+	task.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	task.custom_minimum_size.y = 22
 
 	var controls := _label(stack, 12, MUTED)
@@ -343,16 +308,52 @@ func _build_bottom() -> void:
 		+ "R — сброс"
 	)
 
-	controls.horizontal_alignment = (
-		HORIZONTAL_ALIGNMENT_CENTER
-	)
+	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	message = _label(stack, 14, ACCENT)
-	message.horizontal_alignment = (
-		HORIZONTAL_ALIGNMENT_CENTER
+	message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	message.custom_minimum_size.y = 21
+
+
+func _build_xp_panel() -> void:
+	var panel := PanelContainer.new()
+	panel.name = "XPPanel"
+
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.offset_left = -175
+	panel.offset_right = 175
+	panel.offset_top = 18
+
+	panel.add_theme_stylebox_override(
+		"panel",
+		_style()
 	)
 
-	message.custom_minimum_size.y = 21
+	root.add_child(panel)
+
+	var stack := _stack(panel, 6)
+
+	xp_label = _label(stack, 14, GOLD)
+	xp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	xp_progress = ProgressBar.new()
+	xp_progress.custom_minimum_size.y = 9
+	xp_progress.min_value = 0
+	xp_progress.max_value = 100
+	xp_progress.show_percentage = false
+
+	xp_progress.add_theme_stylebox_override(
+		"background",
+		_button_style(BG)
+	)
+
+	xp_progress.add_theme_stylebox_override(
+		"fill",
+		_button_style(ACCENT)
+	)
+
+	stack.add_child(xp_progress)
 
 
 func _buy(role: int) -> void:
@@ -385,15 +386,10 @@ func _process(delta: float) -> void:
 
 
 func refresh() -> void:
-	if state == null:
+	if state == null or money == null or buttons.size() < 4:
 		return
 
-	if money == null or buttons.size() < 4:
-		return
-
-	money.text = (
-		"%d  МОНЕТ" % state.coins
-	)
+	money.text = "%d  МОНЕТ" % state.coins
 
 	stocks.text = (
         "У игрока       %d рыбы  /  %d филе\n"
@@ -410,11 +406,10 @@ func refresh() -> void:
 	]
 
 	_refresh_boat()
+	_refresh_xp()
 
 	if navigation != null:
-		task.text = (
-			"ЦЕЛЬ: " + str(navigation.current_hint)
-		)
+		task.text = "ЦЕЛЬ: " + str(navigation.current_hint)
 
 	stats.text = (
         "Лодок обслужено: %d\n"
@@ -432,13 +427,29 @@ func refresh() -> void:
 
 		buttons[i].text = (
             "Нанять  ·  %d монет   |   %d чел."
-		) % [
-			price,
-			count
-		]
+		) % [price, count]
 
-		buttons[i].disabled = (
-			state.coins < price
+		buttons[i].disabled = state.coins < price
+
+
+func _refresh_xp() -> void:
+	if progression == null or xp_label == null:
+		return
+
+	var level: int = progression.level
+	var current_xp: int = progression.xp
+	var required: int = progression.xp_required()
+	var rank: String = progression.get_rank_name()
+
+	xp_label.text = (
+		"УРОВЕНЬ %d  ·  %s" % [level, rank]
+	)
+
+	if required <= 0:
+		xp_progress.value = 100
+	else:
+		xp_progress.value = (
+			float(current_xp) / float(required) * 100.0
 		)
 
 
@@ -455,15 +466,13 @@ func _refresh_boat() -> void:
 		"arriving":
 			boat_title.text = "Лодка приближается"
 			boat_info.text = (
-                "Заказ: %d филе"
-				% state.boat_order
+				"Заказ: %d филе" % state.boat_order
 			)
 			boat_progress.visible = false
 
 		"ordering":
 			boat_title.text = (
-                "Заказ: %d филе"
-				% state.boat_order
+				"Заказ: %d филе" % state.boat_order
 			)
 
 			var seconds: int = maxi(

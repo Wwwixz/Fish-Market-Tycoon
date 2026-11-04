@@ -5,13 +5,15 @@ const V = preload("res://scripts/visuals.gd")
 const S = preload("res://scripts/game_state.gd")
 
 const ACTIVATION_RADIUS := 1.25
+const INFO_DISTANCE := 3.0
+const LABEL_DISTANCE := 4.0
 
 var state: Node
 var player: Node3D
+var world: Node
 
 var pads: Array[Node3D] = []
 var labels: Array[Label3D] = []
-var accents: Array[MeshInstance3D] = []
 var inside: Array[bool] = [false, false, false, false]
 
 var clock: float = 0.0
@@ -23,9 +25,11 @@ var colors := [
 	Color("#67AE82")
 ]
 
+
 func setup(game_state: Node, game_player: Node3D) -> void:
 	state = game_state
 	player = game_player
+
 
 func _ready() -> void:
 	for i in range(4):
@@ -35,6 +39,7 @@ func _ready() -> void:
 		state.changed.connect(refresh)
 		state.upgrade_purchased.connect(_on_purchased)
 		refresh()
+
 
 func _build_pad(role: int) -> void:
 	var pad := Node3D.new()
@@ -73,14 +78,13 @@ func _build_pad(role: int) -> void:
 			colors[role].lightened(0.3)
 		)
 
-	var pedestal := V.cylinder(
+	V.cylinder(
 		pad,
 		0.68,
 		0.18,
 		Vector3(0, 0.76, 0),
 		Color("#E7DDC7")
 	)
-	accents.append(pedestal)
 
 	var prop := Node3D.new()
 	prop.name = "UpgradeIcon"
@@ -99,18 +103,14 @@ func _build_pad(role: int) -> void:
 
 	var label_node := V.label(
 		pad,
-		"",
-		Vector3(0, 2.55, 0),
-		31
+		S.UPGRADE_NAMES[role],
+		Vector3(0, 2.4, 0),
+		30
 	)
+
+	label_node.visible = false
 	labels.append(label_node)
 
-	V.label(
-		pad,
-		"ВОЙДИ ДЛЯ УЛУЧШЕНИЯ",
-		Vector3(0, 3.15, 0),
-		21
-	)
 
 func _machine_icon(parent: Node3D) -> void:
 	V.box(
@@ -136,6 +136,7 @@ func _machine_icon(parent: Node3D) -> void:
 			Color("#F0B66F")
 		)
 
+
 func _speed_icon(parent: Node3D) -> void:
 	V.box(
 		parent,
@@ -158,6 +159,7 @@ func _speed_icon(parent: Node3D) -> void:
 			Vector3(-0.75 - i * 0.13, 0, 0),
 			Color("#9AD5EC")
 		)
+
 
 func _cargo_icon(parent: Node3D) -> void:
 	V.box(
@@ -183,6 +185,7 @@ func _cargo_icon(parent: Node3D) -> void:
 			Color("#F0A98E")
 		)
 
+
 func _money_icon(parent: Node3D) -> void:
 	for i in range(3):
 		V.cylinder(
@@ -201,62 +204,141 @@ func _money_icon(parent: Node3D) -> void:
 		Color("#DDA13B")
 	)
 
+
 func refresh() -> void:
 	if state == null:
 		return
 
-	for i in range(4):
-		if i >= labels.size():
-			continue
+	for i in range(mini(4, labels.size())):
+		labels[i].text = S.UPGRADE_NAMES[i]
 
-		var level: int = state.upgrade_levels[i]
-		var price: int = state.upgrade_prices[i]
 
-		labels[i].text = (
-            "%s\nУРОВЕНЬ %d\n%d МОНЕТ"
-			% [
-				S.UPGRADE_NAMES[i],
-				level,
-				price
-			]
+func _find_world() -> void:
+	if is_instance_valid(world):
+		return
+
+	var main := get_parent()
+
+	if main != null:
+		world = main.get_node_or_null("World")
+
+
+func _hire_distance() -> float:
+	if not is_instance_valid(world):
+		return INF
+
+	if not is_instance_valid(player):
+		return INF
+
+	var positions: Array = world.get("hire_positions")
+
+	var closest: float = INF
+	var player_pos: Vector3 = player.global_position
+
+	for pos in positions:
+		var distance: float = Vector2(
+			player_pos.x - pos.x,
+			player_pos.z - pos.z
+		).length()
+
+		closest = minf(closest, distance)
+
+	return closest
+
+
+func _show_shared_info(role: int) -> void:
+	if not is_instance_valid(world):
+		return
+
+	var panel: PanelContainer = world.get("info_panel")
+	var title: Label = world.get("info_title")
+	var description: Label = world.get("info_description")
+	var price_label: Label = world.get("info_price")
+
+	if not is_instance_valid(panel):
+		return
+
+	var level: int = state.upgrade_levels[role]
+	var price: int = state.upgrade_prices[role]
+
+	title.text = S.UPGRADE_NAMES[role]
+	description.text = "Текущий уровень: %d" % level
+
+	if state.coins >= price:
+		price_label.text = "%d монет · Доступно" % price
+		price_label.add_theme_color_override(
+			"font_color",
+			Color("#9DD7AA")
+		)
+	else:
+		price_label.text = (
+            "%d монет · Не хватает %d"
+			% [price, price - state.coins]
 		)
 
-		if state.coins >= price:
-			labels[i].modulate = Color("#F8F2DD")
-		else:
-			labels[i].modulate = Color("#C6B8AE")
+		price_label.add_theme_color_override(
+			"font_color",
+			Color("#E3A39A")
+		)
+
+	panel.visible = true
+
 
 func _process(delta: float) -> void:
 	if state == null or not is_instance_valid(player):
 		return
 
+	_find_world()
+
 	clock += delta
+
+	var nearest_role: int = -1
+	var nearest_distance: float = INF
+
+	var player_pos: Vector3 = player.global_position
 
 	for i in range(4):
 		var pad: Node3D = pads[i]
 		var pos: Vector3 = pad.global_position
-		var player_pos: Vector3 = player.global_position
 
-		var dx: float = player_pos.x - pos.x
-		var dz: float = player_pos.z - pos.z
+		var distance: float = Vector2(
+			player_pos.x - pos.x,
+			player_pos.z - pos.z
+		).length()
 
-		var is_near: bool = (
-			Vector2(dx, dz).length()
-			< ACTIVATION_RADIUS
-		)
+		labels[i].visible = distance <= LABEL_DISTANCE
+
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_role = i
+
+		var is_near: bool = distance < ACTIVATION_RADIUS
 
 		if is_near and not inside[i]:
 			inside[i] = true
 			_try_purchase(i)
-
 		elif not is_near:
 			inside[i] = false
 
 		var icon_node: Node3D = pad.get_node("UpgradeIcon")
+
 		icon_node.position.y = (
 			1.38 + sin(clock * 2.5 + i) * 0.1
 		)
+
 		icon_node.rotation.y += delta * 0.55
+
+	if nearest_role < 0:
+		return
+
+	if nearest_distance > INFO_DISTANCE:
+		return
+
+	if nearest_distance >= _hire_distance():
+		return
+
+	_show_shared_info(nearest_role)
+
 
 func _try_purchase(role: int) -> void:
 	if state.upgrade(role):
@@ -269,6 +351,7 @@ func _try_purchase(role: int) -> void:
 	state.notice.emit(
 		"Не хватает %d монет!" % missing
 	)
+
 
 func _on_purchased(role: int, level: int) -> void:
 	var pos: Vector3 = S.UPGRADE_POSITIONS[role]
@@ -284,12 +367,14 @@ func _on_purchased(role: int, level: int) -> void:
 	var pad: Node3D = pads[role]
 
 	var tween := create_tween()
+
 	tween.tween_property(
 		pad,
 		"scale",
 		Vector3(1.12, 1.0, 1.12),
 		0.12
 	)
+
 	tween.tween_property(
 		pad,
 		"scale",

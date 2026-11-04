@@ -9,35 +9,16 @@ const Boats = preload("res://scripts/boat_manager.gd")
 const Guide = preload("res://scripts/navigation_guide.gd")
 const UI = preload("res://scripts/game_ui.gd")
 const Visuals = preload("res://scripts/visuals.gd")
-
-const DockDetails = preload(
-    "res://scripts/dock_details.gd"
-)
-
-const ProductionVisuals = preload(
-    "res://scripts/production_visuals.gd"
-)
-const StorageVisuals = preload(
-    "res://scripts/storage_visuals.gd"
-)
-const UpgradeManager = preload(
-    "res://scripts/upgrade_manager.gd"
-)
-const MarketVisuals = preload(
-    "res://scripts/market_visuals.gd"
-)
-const CustomerManager = preload(
-    "res://scripts/customer_manager.gd"
-)
-const ExpansionManager = preload(
-    "res://scripts/expansion_manager.gd"
-)
-const EnvironmentVisuals = preload(
-    "res://scripts/environment_visuals.gd"
-)
-const SaveManager = preload(
-    "res://scripts/save_manager.gd"
-)
+const DockDetails = preload("res://scripts/dock_details.gd")
+const Progression = preload("res://scripts/progression_manager.gd")
+const ProductionVisuals = preload("res://scripts/production_visuals.gd")
+const StorageVisuals = preload("res://scripts/storage_visuals.gd")
+const UpgradeManager = preload("res://scripts/upgrade_manager.gd")
+const MarketVisuals = preload("res://scripts/market_visuals.gd")
+const CustomerManager = preload("res://scripts/customer_manager.gd")
+const ExpansionManager = preload("res://scripts/expansion_manager.gd")
+const EnvironmentVisuals = preload("res://scripts/environment_visuals.gd")
+const SaveManager = preload("res://scripts/save_manager.gd")
 
 var state: Node
 var world: Node3D
@@ -48,6 +29,7 @@ var guide: Node3D
 var ui: CanvasLayer
 
 var dock_details: Node3D
+var progression: Node
 var production_visuals: Node3D
 var storage_visuals: Node3D
 var upgrade_manager: Node3D
@@ -87,9 +69,15 @@ func _ready() -> void:
 
 	player.set("worker_manager", workers)
 
+	progression = Progression.new()
+	progression.name = "ProgressionManager"
+	progression.call("setup", state)
+	add_child(progression)
+
 	save_manager = SaveManager.new()
 	save_manager.name = "SaveManager"
 	save_manager.call("setup", state, player, workers)
+	save_manager.set("progression", progression)
 	add_child(save_manager)
 
 	var loaded_data: Dictionary = save_manager.call("load_game")
@@ -147,6 +135,7 @@ func _ready() -> void:
 	ui = UI.new()
 	ui.name = "GameUI"
 	ui.call("setup", state, guide, workers)
+	ui.set("progression", progression)
 	add_child(ui)
 
 	state.reward.connect(_reward)
@@ -167,7 +156,6 @@ func _restore_worker_models() -> void:
 		saved_prices.append(int(value))
 
 	var saved_coins: int = state.coins
-
 	var default_prices: Array[int] = [30, 50, 70, 100]
 
 	for role in range(4):

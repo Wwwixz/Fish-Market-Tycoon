@@ -19,3 +19,4 @@ res://scripts/save_manager.gd
 res://scripts/save_overlay.gd
 res://scripts/environment_visuals.gd
 res://scripts/dock_details.gd
+res://scripts/progression_manager.gd
