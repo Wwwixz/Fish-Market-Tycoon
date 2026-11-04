@@ -1,0 +1,16 @@
+78098b89c88a74ebe8c20117b8754620
+::res://::1793817792
+README_RU.md::TextFile::-1::1793802852::0::1::::<><><>0<>0<><>::
+::res://scenes/::1793824156
+main.tscn::PackedScene::5935682782616366959::1793824156::0::1::::<><><>0<>0<><>::uid://bjaj0o5kljck6::::res://scripts/main.gd
+::res://scripts/::1793824156
+boat_manager.gd::GDScript::7549347445976891185::1793823515::0::1::::<>RefCounted<><>0<>0<><>::
+game_ui.gd::GDScript::3472147183332448024::1793823540::0::1::::<>RefCounted<><>0<>0<><>::
+main.gd::GDScript::3018712156358357939::1793824138::0::1::::<>Node3D<><>0<>0<><>::
+game_state.gd::GDScript::8598478032537720::1793824156::0::1::::<>Node<><>0<>0<><>::
+navigation_guide.gd::GDScript::782029857038954619::1793823530::0::1::::<>RefCounted<><>0<>0<><>::
+player_controller.gd::GDScript::292607829026878432::1793823471::0::1::::<>RefCounted<><>0<>0<><>::
+production_manager.gd::GDScript::3435645536794392189::1793823502::0::1::::<>RefCounted<><>0<>0<><>::
+visuals.gd::GDScript::8523579208748913148::1793823548::0::1::::<>RefCounted<><>0<>0<><>::
+worker_manager.gd::GDScript::7442576567951118041::1793823484::0::1::::<>RefCounted<><>0<>0<><>::
+world_builder.gd::GDScript::6369675289965744139::1793823457::0::1::::<>RefCounted<><>0<>0<><>::
