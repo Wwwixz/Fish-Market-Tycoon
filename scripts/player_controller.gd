@@ -28,6 +28,9 @@ var worker_manager: Node3D
 var camera: Camera3D
 var rod: Node3D
 
+var model: Dictionary = {}
+var animation_time: float = 0.0
+
 var fishing: bool = false
 var timer: float = 0.0
 var armed: bool = true
@@ -46,13 +49,18 @@ var hire_inside: Array[bool] = [
 	false, false, false, false
 ]
 
+
 func setup(game_state: Node) -> void:
 	state = game_state
+
 
 func _ready() -> void:
 	position = Vector3(0, 0.5, 8)
 
-	V.person(self, Color("#527A91"))
+	model = V.animated_person(
+		self,
+		Color("#527A91")
+	)
 
 	V.label(
 		self,
@@ -61,17 +69,20 @@ func _ready() -> void:
 	)
 
 	rod = Node3D.new()
-	rod.position = Vector3(0.5, 0.7, 0)
-	add_child(rod)
+	rod.name = "PlayerFishingRod"
+
+	var right_arm: Node3D = model["right_arm"]
+	right_arm.add_child(rod)
 
 	V.cylinder(
 		rod,
 		0.04,
 		2.1,
-		Vector3(0, 1, 0),
+		Vector3(0, -0.7, -0.5),
 		Color("#946D50")
 	)
 
+	rod.rotation.x = -0.5
 	rod.visible = false
 
 	camera = Camera3D.new()
@@ -88,6 +99,7 @@ func _ready() -> void:
 	camera_angle_target = DEFAULT_CAMERA_ANGLE
 
 	_update_camera(1.0, true)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -115,6 +127,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			camera_angle_target = DEFAULT_CAMERA_ANGLE
 			camera_zoom_target = DEFAULT_ZOOM
 
+
 func _process(delta: float) -> void:
 	if state == null:
 		return
@@ -129,14 +142,10 @@ func _process(delta: float) -> void:
 
 		timer += delta
 
-		rod.rotation.z = (
-			sin(Time.get_ticks_msec() * 0.009) * 0.4
-		)
-
 		if timer >= 3.0:
 			fishing = false
 			rod.visible = false
-			rod.rotation.z = 0.0
+			rod.rotation.x = -0.5
 
 			state.player_fish += 1
 
@@ -148,13 +157,108 @@ func _process(delta: float) -> void:
 			)
 
 			state.changed.emit()
-
 	else:
 		_move(delta)
 		_interact()
 
+	_animate(delta)
 	_check_hire_zones()
 	_update_camera(delta)
+
+
+func _animate(delta: float) -> void:
+	animation_time += delta
+
+	var body: Node3D = model["body"]
+	var left_arm: Node3D = model["left_arm"]
+	var right_arm: Node3D = model["right_arm"]
+	var left_leg: Node3D = model["left_leg"]
+	var right_leg: Node3D = model["right_leg"]
+
+	var speed: float = velocity.length()
+	var movement_weight: float = clampf(
+		speed / MOVE_SPEED,
+		0.0,
+		1.0
+	)
+
+	if fishing:
+		movement_weight = 0.0
+
+	var phase: float = animation_time * 10.0
+
+	var leg_swing: float = (
+		sin(phase) * 0.6 * movement_weight
+	)
+
+	var arm_swing: float = (
+		sin(phase) * 0.45 * movement_weight
+	)
+
+	var bob: float = (
+		absf(sin(phase))
+		* 0.08
+		* movement_weight
+	)
+
+	if movement_weight < 0.05:
+		bob += sin(animation_time * 2.0) * 0.012
+
+	var weight: float = minf(1.0, delta * 12.0)
+
+	left_leg.rotation.x = lerpf(
+		left_leg.rotation.x,
+		leg_swing,
+		weight
+	)
+
+	right_leg.rotation.x = lerpf(
+		right_leg.rotation.x,
+		-leg_swing,
+		weight
+	)
+
+	body.position.y = lerpf(
+		body.position.y,
+		bob,
+		weight
+	)
+
+	if fishing:
+		left_arm.rotation.x = lerpf(
+			left_arm.rotation.x,
+			-0.35,
+			weight
+		)
+
+		right_arm.rotation.x = lerpf(
+			right_arm.rotation.x,
+			-0.85 + sin(animation_time * 5.0) * 0.22,
+			weight
+		)
+
+		rod.rotation.x = (
+			-0.5 + sin(animation_time * 5.0) * 0.15
+		)
+	else:
+		left_arm.rotation.x = lerpf(
+			left_arm.rotation.x,
+			-arm_swing,
+			weight
+		)
+
+		right_arm.rotation.x = lerpf(
+			right_arm.rotation.x,
+			arm_swing,
+			weight
+		)
+
+		rod.rotation.x = lerpf(
+			rod.rotation.x,
+			-0.5,
+			weight
+		)
+
 
 func _move(delta: float) -> void:
 	var input_dir := Vector2.ZERO
@@ -234,6 +338,7 @@ func _move(delta: float) -> void:
 			minf(1.0, delta * ROTATION_SPEED)
 		)
 
+
 func _update_camera(
 	delta: float,
 	instant: bool = false
@@ -304,6 +409,7 @@ func _update_camera(
 		Vector3.UP
 	)
 
+
 func near(
 	target: Vector3,
 	radius: float = 1.5
@@ -312,6 +418,7 @@ func near(
 		position.x - target.x,
 		position.z - target.z
 	).length() <= radius
+
 
 func _interact() -> void:
 	if not near(S.FISHING):
@@ -379,6 +486,7 @@ func _interact() -> void:
 			state.changed.emit()
 
 		state.sell()
+
 
 func _check_hire_zones() -> void:
 	if worker_manager == null:

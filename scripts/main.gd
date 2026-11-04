@@ -10,6 +10,10 @@ const Guide = preload("res://scripts/navigation_guide.gd")
 const UI = preload("res://scripts/game_ui.gd")
 const Visuals = preload("res://scripts/visuals.gd")
 
+const DockDetails = preload(
+    "res://scripts/dock_details.gd"
+)
+
 const ProductionVisuals = preload(
     "res://scripts/production_visuals.gd"
 )
@@ -43,6 +47,7 @@ var boats: Node3D
 var guide: Node3D
 var ui: CanvasLayer
 
+var dock_details: Node3D
 var production_visuals: Node3D
 var storage_visuals: Node3D
 var upgrade_manager: Node3D
@@ -52,6 +57,7 @@ var expansion_manager: Node3D
 var environment_visuals: Node3D
 var save_manager: Node
 
+
 func _ready() -> void:
 	state = State.new()
 	state.name = "GameState"
@@ -60,6 +66,10 @@ func _ready() -> void:
 	world = World.new()
 	world.name = "World"
 	add_child(world)
+
+	dock_details = DockDetails.new()
+	dock_details.name = "DockDetails"
+	add_child(dock_details)
 
 	environment_visuals = EnvironmentVisuals.new()
 	environment_visuals.name = "EnvironmentVisuals"
@@ -145,6 +155,7 @@ func _ready() -> void:
 	save_manager.ready_to_save = true
 	_refresh()
 
+
 func _restore_worker_models() -> void:
 	var saved_hired: Array[int] = []
 	var saved_prices: Array[int] = []
@@ -175,6 +186,7 @@ func _restore_worker_models() -> void:
 
 	state.coins = saved_coins
 
+
 func _reward(
 	amount: int,
 	icon: String,
@@ -182,6 +194,7 @@ func _reward(
 	pos: Vector3
 ) -> void:
 	Visuals.popup(self, amount, icon, color, pos)
+
 
 func _refresh() -> void:
 	world.call("refresh", state)

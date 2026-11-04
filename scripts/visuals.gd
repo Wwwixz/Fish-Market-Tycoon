@@ -8,9 +8,12 @@ static func material(
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.roughness = 0.85
+
 	if unshaded:
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+
 	return m
+
 
 static func box(
 	parent: Node3D,
@@ -27,6 +30,7 @@ static func box(
 	parent.add_child(n)
 	return n
 
+
 static func sphere(
 	parent: Node3D,
 	radius: float,
@@ -42,6 +46,7 @@ static func sphere(
 	n.material_override = material(color)
 	parent.add_child(n)
 	return n
+
 
 static func cylinder(
 	parent: Node3D,
@@ -61,6 +66,7 @@ static func cylinder(
 	parent.add_child(n)
 	return n
 
+
 static func label(
 	parent: Node3D,
 	value: String,
@@ -79,34 +85,13 @@ static func label(
 	parent.add_child(n)
 	return n
 
+
 static func person(
 	parent: Node3D,
 	color: Color
 ) -> void:
-	cylinder(
-		parent, 0.36, 0.85,
-		Vector3(0, 0.55, 0), color
-	)
-	sphere(
-		parent, 0.32,
-		Vector3(0, 1.35, 0),
-		Color("#D9B18D")
-	)
-	box(
-		parent, Vector3(0.75, 0.15, 0.75),
-		Vector3(0, 1.66, 0),
-		color.darkened(0.3)
-	)
-	box(
-		parent, Vector3(0.22, 0.55, 0.26),
-		Vector3(-0.18, -0.1, 0),
-		Color("#253D43")
-	)
-	box(
-		parent, Vector3(0.22, 0.55, 0.26),
-		Vector3(0.18, -0.1, 0),
-		Color("#253D43")
-	)
+	animated_person(parent, color)
+
 
 static func animated_person(
 	parent: Node3D,
@@ -116,59 +101,124 @@ static func animated_person(
 	body.name = "AnimatedBody"
 	parent.add_child(body)
 
-	cylinder(
-		body, 0.34, 0.8,
-		Vector3(0, 0.75, 0), color
+	var shirt := cylinder(
+		body,
+		0.34,
+		0.8,
+		Vector3(0, 0.75, 0),
+		color
 	)
+
+	box(
+		body,
+		Vector3(0.65, 0.12, 0.4),
+		Vector3(0, 0.4, 0),
+		color.darkened(0.22)
+	)
+
 	sphere(
-		body, 0.31,
+		body,
+		0.31,
 		Vector3(0, 1.42, 0),
 		Color("#D9B18D")
 	)
+
 	box(
-		body, Vector3(0.72, 0.13, 0.72),
+		body,
+		Vector3(0.72, 0.13, 0.72),
 		Vector3(0, 1.72, 0),
 		color.darkened(0.3)
 	)
+
+	box(
+		body,
+		Vector3(0.48, 0.19, 0.27),
+		Vector3(0, 1.67, -0.24),
+		color.darkened(0.35)
+	)
+
+	for x in [-0.12, 0.12]:
+		sphere(
+			body,
+			0.035,
+			Vector3(x, 1.46, -0.285),
+			Color("#28383B")
+		)
 
 	var left_arm := Node3D.new()
 	left_arm.name = "LeftArm"
 	left_arm.position = Vector3(-0.43, 1.04, 0)
 	body.add_child(left_arm)
+
 	box(
-		left_arm, Vector3(0.2, 0.62, 0.22),
-		Vector3(0, -0.28, 0),
+		left_arm,
+		Vector3(0.2, 0.56, 0.22),
+		Vector3(0, -0.25, 0),
 		color.darkened(0.12)
+	)
+
+	sphere(
+		left_arm,
+		0.11,
+		Vector3(0, -0.57, 0),
+		Color("#D9B18D")
 	)
 
 	var right_arm := Node3D.new()
 	right_arm.name = "RightArm"
 	right_arm.position = Vector3(0.43, 1.04, 0)
 	body.add_child(right_arm)
+
 	box(
-		right_arm, Vector3(0.2, 0.62, 0.22),
-		Vector3(0, -0.28, 0),
+		right_arm,
+		Vector3(0.2, 0.56, 0.22),
+		Vector3(0, -0.25, 0),
 		color.darkened(0.12)
+	)
+
+	sphere(
+		right_arm,
+		0.11,
+		Vector3(0, -0.57, 0),
+		Color("#D9B18D")
 	)
 
 	var left_leg := Node3D.new()
 	left_leg.name = "LeftLeg"
 	left_leg.position = Vector3(-0.18, 0.36, 0)
 	body.add_child(left_leg)
+
 	box(
-		left_leg, Vector3(0.23, 0.58, 0.27),
+		left_leg,
+		Vector3(0.23, 0.58, 0.27),
 		Vector3(0, -0.25, 0),
-		Color("#253D43")
+		Color("#34464A")
+	)
+
+	box(
+		left_leg,
+		Vector3(0.26, 0.14, 0.4),
+		Vector3(0, -0.54, -0.07),
+		Color("#263538")
 	)
 
 	var right_leg := Node3D.new()
 	right_leg.name = "RightLeg"
 	right_leg.position = Vector3(0.18, 0.36, 0)
 	body.add_child(right_leg)
+
 	box(
-		right_leg, Vector3(0.23, 0.58, 0.27),
+		right_leg,
+		Vector3(0.23, 0.58, 0.27),
 		Vector3(0, -0.25, 0),
-		Color("#253D43")
+		Color("#34464A")
+	)
+
+	box(
+		right_leg,
+		Vector3(0.26, 0.14, 0.4),
+		Vector3(0, -0.54, -0.07),
+		Color("#263538")
 	)
 
 	var cargo_anchor := Node3D.new()
@@ -181,20 +231,27 @@ static func animated_person(
 	cargo_anchor.add_child(crate)
 
 	box(
-		crate, Vector3(0.75, 0.5, 0.55),
-		Vector3.ZERO, Color("#946D50")
+		crate,
+		Vector3(0.75, 0.5, 0.55),
+		Vector3.ZERO,
+		Color("#946D50")
 	)
+
 	box(
-		crate, Vector3(0.79, 0.08, 0.6),
+		crate,
+		Vector3(0.79, 0.08, 0.6),
 		Vector3(0, 0.25, 0),
 		Color("#B68B60")
 	)
+
 	for x in [-0.28, 0.28]:
 		box(
-			crate, Vector3(0.08, 0.52, 0.6),
+			crate,
+			Vector3(0.08, 0.52, 0.6),
 			Vector3(x, 0, 0),
 			Color("#76543E")
 		)
+
 	crate.visible = false
 
 	return {
@@ -206,6 +263,7 @@ static func animated_person(
 		"cargo_anchor": cargo_anchor,
 		"crate": crate
 	}
+
 
 static func popup(
 	parent: Node3D,
@@ -220,18 +278,25 @@ static func popup(
 		position + Vector3(0, 2.3, 0),
 		80
 	)
+
 	n.modulate = color
 	n.no_depth_test = true
 
 	var tween := parent.create_tween()
 	tween.set_parallel(true)
+
 	tween.tween_property(
-		n, "position",
+		n,
+		"position",
 		n.position + Vector3(0, 1.6, 0),
 		1.3
 	)
+
 	tween.tween_property(
-		n, "modulate:a",
-		0.0, 0.6
+		n,
+		"modulate:a",
+		0.0,
+		0.6
 	).set_delay(0.7)
+
 	tween.chain().tween_callback(n.queue_free)
