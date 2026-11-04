@@ -10,3 +10,11 @@ res://scripts/navigation_guide.gd
 res://scripts/game_ui.gd
 res://scripts/production_visuals.gd
 res://scripts/storage_visuals.gd
+res://upgrade_manager.gd
+res://scripts/upgrade_manager.gd
+res://scripts/market_visuals.gd
+res://scripts/customer_manager.gd
+res://scripts/expansion_manager.gd
+res://scripts/save_manager.gd
+res://scripts/save_overlay.gd
+res://scripts/environment_visuals.gd

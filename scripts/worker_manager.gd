@@ -4,7 +4,6 @@ extends Node3D
 const V = preload("res://scripts/visuals.gd")
 const S = preload("res://scripts/game_state.gd")
 
-const WALK_SPEED := 3.5
 const FISH_TIME := 3.0
 
 var state: Node
@@ -45,7 +44,8 @@ func hire(role: int) -> void:
 	add_child(node)
 
 	var model: Dictionary = V.animated_person(
-		node, colors[role]
+		node,
+		colors[role]
 	)
 
 	V.label(
@@ -81,14 +81,14 @@ func hire(role: int) -> void:
 		"moving": false,
 		"route": [],
 		"route_index": 0,
-		"phase": randf() * TAU,
-		"action": 0.0
+		"phase": randf() * TAU
 	}
 
 	workers.append(worker)
 
 	state.reward.emit(
-		1, "👷",
+		1,
+		"👷",
 		Color("#F2D58D"),
 		node.global_position
 	)
@@ -115,10 +115,7 @@ func _tick(w: Dictionary, delta: float) -> void:
 		3:
 			_seller(w, delta)
 
-func _set_route(
-	w: Dictionary,
-	points: Array
-) -> void:
+func _set_route(w: Dictionary, points: Array) -> void:
 	w["route"] = points
 	w["route_index"] = 0
 
@@ -131,8 +128,11 @@ func _travel(w: Dictionary, delta: float) -> bool:
 
 	var node: Node3D = w["node"]
 	var target: Vector3 = route[index]
+
 	var destination := Vector3(
-		target.x, 0.5, target.z
+		target.x,
+		0.5,
+		target.z
 	)
 
 	var direction: Vector3 = destination - node.position
@@ -141,15 +141,18 @@ func _travel(w: Dictionary, delta: float) -> bool:
 	if direction.length() <= 0.18:
 		node.position = destination
 		w["route_index"] = index + 1
-		return w["route_index"] >= route.size()
+		return int(w["route_index"]) >= route.size()
 
-	var dir := direction.normalized()
-	var step := minf(
+	var dir: Vector3 = direction.normalized()
+	var speed: float = state.worker_speed()
+
+	var step: float = minf(
 		direction.length(),
-		WALK_SPEED * delta
+		speed * delta
 	)
 
 	node.position += dir * step
+
 	node.rotation.y = lerp_angle(
 		node.rotation.y,
 		atan2(-dir.x, -dir.z),
@@ -161,10 +164,19 @@ func _travel(w: Dictionary, delta: float) -> bool:
 
 func _carry(w: Dictionary, amount: int) -> void:
 	w["cargo"] = amount
+
 	var model: Dictionary = w["model"]
 	var crate: Node3D = model["crate"]
+
 	crate.visible = amount > 0
-	w["action"] = 0.35
+
+	if amount > 0:
+		var size_factor: float = (
+			1.0 + minf(float(amount - 1) * 0.08, 0.4)
+		)
+		crate.scale = Vector3.ONE * size_factor
+	else:
+		crate.scale = Vector3.ONE
 
 func _fisher(w: Dictionary, delta: float) -> void:
 	match String(w["step"]):
@@ -181,12 +193,15 @@ func _fisher(w: Dictionary, delta: float) -> void:
 		"fishing":
 			w["timer"] += delta
 
-			if w["timer"] >= FISH_TIME:
+			if float(w["timer"]) >= FISH_TIME:
 				w["rod"].visible = false
-				_carry(w, 1)
+
+				var amount: int = state.carrying_capacity()
+				_carry(w, amount)
 
 				state.reward.emit(
-					1, "🐟",
+					amount,
+					"🐟",
 					Color("#83D8EF"),
 					w["node"].global_position
 				)
@@ -220,8 +235,13 @@ func _fish_carrier(
 
 		"to_box":
 			if _travel(w, delta) and state.fish_box > 0:
-				state.fish_box -= 1
-				_carry(w, 1)
+				var amount: int = mini(
+					state.fish_box,
+					state.carrying_capacity()
+				)
+
+				state.fish_box -= amount
+				_carry(w, amount)
 				state.changed.emit()
 
 				_set_route(w, [
@@ -258,7 +278,8 @@ func _fillet_carrier(
 		"to_machine":
 			if _travel(w, delta) and state.machine_output > 0:
 				var amount: int = mini(
-					state.machine_output, 3
+					state.machine_output,
+					state.carrying_capacity()
 				)
 
 				state.machine_output -= amount
@@ -297,16 +318,16 @@ func _seller(w: Dictionary, delta: float) -> void:
 			if (
 				state.boat_state == "ordering"
 				and state.fillet_box >= state.boat_order
+				and state.boat_order > 0
 			):
 				if state.sell():
 					w["step"] = "serving"
 					w["timer"] = 0.0
-					w["action"] = 0.8
 
 		"serving":
 			w["timer"] += delta
 
-			if w["timer"] >= 0.8:
+			if float(w["timer"]) >= 0.8:
 				w["step"] = "waiting"
 
 func _animate(w: Dictionary, delta: float) -> void:
@@ -320,14 +341,14 @@ func _animate(w: Dictionary, delta: float) -> void:
 	var cargo_anchor: Node3D = model["cargo_anchor"]
 
 	var phase: float = elapsed * 10.0 + float(w["phase"])
-	var moving: bool = w["moving"]
+	var moving: bool = bool(w["moving"])
 	var carrying: bool = int(w["cargo"]) > 0
 	var fishing: bool = String(w["step"]) == "fishing"
 	var serving: bool = String(w["step"]) == "serving"
 
-	var target_leg := 0.0
-	var target_arm := 0.0
-	var target_bob := 0.0
+	var target_leg: float = 0.0
+	var target_arm: float = 0.0
+	var target_bob: float = 0.0
 
 	if moving:
 		target_leg = sin(phase) * 0.55
@@ -398,8 +419,3 @@ func _animate(w: Dictionary, delta: float) -> void:
 			target_arm,
 			minf(1.0, delta * 10.0)
 		)
-
-	w["action"] = maxf(
-		0.0,
-		float(w["action"]) - delta
-	)

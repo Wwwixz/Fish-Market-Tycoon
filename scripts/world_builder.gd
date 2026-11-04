@@ -4,6 +4,14 @@ extends Node3D
 const V = preload("res://scripts/visuals.gd")
 const S = preload("res://scripts/game_state.gd")
 
+const WATER := Color("#729FA7")
+const SAND := Color("#C8B58F")
+const GRASS := Color("#819C78")
+const PATH := Color("#AA9C83")
+const WOOD := Color("#927457")
+const DARK_WOOD := Color("#6F5845")
+const METAL := Color("#829B98")
+
 var fish_label: Label3D
 var machine_label: Label3D
 var fillet_label: Label3D
@@ -27,13 +35,13 @@ func _ready() -> void:
 	fish_label = _storage(
 		S.FISH_BOX,
 		"СКЛАД РЫБЫ",
-		Color("#5799B4")
+		Color("#729EAD")
 	)
 
 	fillet_label = _storage(
 		S.FILLET_BOX,
 		"СКЛАД ФИЛЕ",
-		Color("#D99B66")
+		Color("#B99173")
 	)
 
 	_machine()
@@ -43,7 +51,7 @@ func _ready() -> void:
 		"РЫБАК",
 		"ЛОВИТ РЫБУ",
 		0,
-		Color("#428DB6")
+		Color("#638FA7")
 	)
 
 	_hire_zone(
@@ -51,7 +59,7 @@ func _ready() -> void:
 		"ГРУЗЧИК РЫБЫ",
 		"РЫБА -> СТАНОК",
 		1,
-		Color("#D19A60")
+		Color("#B39470")
 	)
 
 	_hire_zone(
@@ -59,7 +67,7 @@ func _ready() -> void:
 		"ГРУЗЧИК ФИЛЕ",
 		"ФИЛЕ -> КАССА",
 		2,
-		Color("#9A84B9")
+		Color("#9686A8")
 	)
 
 	_hire_zone(
@@ -67,24 +75,30 @@ func _ready() -> void:
 		"ПРОДАВЕЦ",
 		"ПРОДАЁТ ЗАКАЗЫ",
 		3,
-		Color("#63A881")
+		Color("#719C82")
 	)
 
 func _environment() -> void:
 	var light := DirectionalLight3D.new()
+	light.name = "MainSun"
+	light.add_to_group("main_sun")
 	light.rotation_degrees = Vector3(-55, -35, 0)
-	light.light_energy = 0.9
+	light.light_color = Color("#EADFCB")
+	light.light_energy = 0.45
 	light.shadow_enabled = true
 	add_child(light)
 
 	var world := WorldEnvironment.new()
-	var env := Environment.new()
+	world.name = "MainWorldEnvironment"
 
+	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("#91C4CB")
+	env.background_color = Color("#91B4B6")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("#C4D1C6")
-	env.ambient_light_energy = 0.5
+	env.ambient_light_color = Color("#AABCB2")
+	env.ambient_light_energy = 0.22
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 
 	world.environment = env
 	add_child(world)
@@ -94,42 +108,42 @@ func _island() -> void:
 		self,
 		Vector3(100, 0.3, 100),
 		Vector3(0, -0.65, 0),
-		Color("#438F9A")
+		WATER
 	)
 
 	V.box(
 		self,
 		Vector3(39, 0.5, 32),
 		Vector3(0, -0.2, 5),
-		Color("#D8BC91")
+		SAND
 	)
 
 	V.box(
 		self,
 		Vector3(35, 0.1, 23),
 		Vector3(0, 0.1, 8),
-		Color("#7FA681")
+		GRASS
 	)
 
 	V.box(
 		self,
 		Vector3(21, 0.08, 2.6),
 		Vector3(0, 0.2, 3),
-		Color("#B8A58C")
+		PATH
 	)
 
 	V.box(
 		self,
 		Vector3(2.7, 0.08, 14),
 		Vector3(-5, 0.2, -3),
-		Color("#B8A58C")
+		PATH
 	)
 
 	V.box(
 		self,
 		Vector3(2.7, 0.08, 14),
 		Vector3(9, 0.2, -3),
-		Color("#B8A58C")
+		PATH
 	)
 
 func _decorations() -> void:
@@ -143,21 +157,25 @@ func _decorations() -> void:
 		add_child(tree)
 
 		V.cylinder(
-			tree, 0.25, 2.0,
+			tree,
+			0.25,
+			2.0,
 			Vector3(0, 1, 0),
-			Color("#82664B")
+			Color("#79634E")
 		)
 
 		V.sphere(
-			tree, 1.2,
+			tree,
+			1.2,
 			Vector3(0, 2.5, 0),
-			Color("#4D8265")
+			Color("#587E62")
 		)
 
 		V.sphere(
-			tree, 0.85,
+			tree,
+			0.85,
 			Vector3(0.5, 3.2, 0),
-			Color("#669875")
+			Color("#739776")
 		)
 
 func _dock(pos: Vector3) -> void:
@@ -169,8 +187,12 @@ func _dock(pos: Vector3) -> void:
 		V.box(
 			dock,
 			Vector3(4.2, 0.25, 0.7),
-			Vector3(0, 0.4, -2.5 + float(i) * 0.75),
-			Color("#946D50")
+			Vector3(
+				0,
+				0.4,
+				-2.5 + float(i) * 0.75
+			),
+			WOOD
 		)
 
 	for x in [-1.8, 1.8]:
@@ -179,7 +201,7 @@ func _dock(pos: Vector3) -> void:
 				dock,
 				Vector3(0.35, 1.7, 0.35),
 				Vector3(x, -0.1, z),
-				Color("#76553E")
+				DARK_WOOD
 			)
 
 func _platform(
@@ -191,15 +213,13 @@ func _platform(
 	root.position = pos
 	add_child(root)
 
-	# Тёмная подложка
 	V.box(
 		root,
 		Vector3(size + 0.3, 0.12, size + 0.3),
 		Vector3(0, 0.51, 0),
-		Color("#29414A")
+		Color("#344B4C")
 	)
 
-	# Цветная поверхность
 	V.box(
 		root,
 		Vector3(size, 0.1, size),
@@ -207,8 +227,7 @@ func _platform(
 		color
 	)
 
-	# Светлая окантовка
-	var edge: Color = color.lightened(0.35)
+	var edge: Color = color.lightened(0.12)
 	var half: float = size * 0.5
 
 	for z in [-half, half]:
@@ -227,14 +246,13 @@ func _platform(
 			edge
 		)
 
-	# Угловые декоративные элементы
 	for x in [-half, half]:
 		for z in [-half, half]:
 			V.box(
 				root,
 				Vector3(0.24, 0.12, 0.24),
 				Vector3(x, 0.76, z),
-				Color("#F2E9D6")
+				Color("#BDB5A2")
 			)
 
 	return root
@@ -284,7 +302,7 @@ func _fish_model(
 		root,
 		0.045,
 		Vector3(0.38, 0.08, -0.2),
-		Color("#1F333B")
+		Color("#263B40")
 	)
 
 	return root
@@ -315,7 +333,7 @@ func _crate_model(
 		crate,
 		Vector3(1.0, 0.08, 0.78),
 		Vector3(0, 0.29, 0),
-		color.lightened(0.2)
+		color.lightened(0.12)
 	)
 
 	return crate
@@ -326,7 +344,7 @@ func _coin_model(parent: Node3D) -> void:
 		0.42,
 		0.12,
 		Vector3.ZERO,
-		Color("#F3C85E")
+		Color("#D9B96C")
 	)
 
 	V.cylinder(
@@ -334,13 +352,13 @@ func _coin_model(parent: Node3D) -> void:
 		0.27,
 		0.13,
 		Vector3(0, 0.02, 0),
-		Color("#E5A941")
+		Color("#BD9851")
 	)
 
 func _fishing_zone() -> void:
 	var root := _platform(
 		S.FISHING,
-		Color("#438FC0")
+		Color("#6A9CB1")
 	)
 
 	var prop := _floating_prop(
@@ -350,7 +368,7 @@ func _fishing_zone() -> void:
 
 	_fish_model(
 		prop,
-		Color("#8AD0DE"),
+		Color("#91B8BF"),
 		0.9
 	)
 
@@ -364,7 +382,7 @@ func _fishing_zone() -> void:
 func _processing_zone() -> void:
 	var root := _platform(
 		S.MACHINE_ZONE,
-		Color("#D9934C")
+		Color("#BE986E")
 	)
 
 	var prop := _floating_prop(
@@ -372,19 +390,18 @@ func _processing_zone() -> void:
 		Vector3(0, 1.65, 0)
 	)
 
-	# Декоративная разделочная доска
 	V.box(
 		prop,
 		Vector3(1.1, 0.12, 0.65),
 		Vector3.ZERO,
-		Color("#A87C55")
+		Color("#99785B")
 	)
 
 	var fillet := V.box(
 		prop,
 		Vector3(0.65, 0.15, 0.34),
 		Vector3(0, 0.14, 0),
-		Color("#F4AB8E")
+		Color("#D6A08E")
 	)
 	fillet.rotation.y = 0.2
 
@@ -398,7 +415,7 @@ func _processing_zone() -> void:
 func _cash_zone() -> void:
 	var root := _platform(
 		S.CASH,
-		Color("#58A77D")
+		Color("#78A087")
 	)
 
 	var prop := _floating_prop(
@@ -428,7 +445,7 @@ func _storage(
 		root,
 		Vector3(2.6, 1, 2),
 		Vector3(0, 0.65, 0),
-		Color("#946D50")
+		WOOD
 	)
 
 	V.box(
@@ -438,14 +455,13 @@ func _storage(
 		color
 	)
 
-	# Металлические углы ящика
 	for x in [-1.2, 1.2]:
 		for z in [-0.9, 0.9]:
 			V.box(
 				root,
 				Vector3(0.14, 0.85, 0.14),
 				Vector3(x, 0.72, z),
-				Color("#D0C8AE")
+				Color("#B5B3A3")
 			)
 
 	return V.label(
@@ -464,29 +480,28 @@ func _machine() -> void:
 		machine,
 		Vector3(4, 1.4, 2.7),
 		Vector3(0, 0.9, 0),
-		Color("#789997")
+		METAL
 	)
 
 	V.box(
 		machine,
 		Vector3(4.3, 0.2, 3),
 		Vector3(0, 1.7, 0),
-		Color("#D2DAD3")
+		Color("#B5BDB2")
 	)
 
 	V.box(
 		machine,
 		Vector3(2.7, 0.12, 1.2),
 		Vector3(0, 1.85, 0),
-		Color("#477C80")
+		Color("#5D8584")
 	)
 
-	# Панель управления
 	V.box(
 		machine,
 		Vector3(0.7, 0.5, 0.1),
 		Vector3(-1.3, 1.15, 1.4),
-		Color("#344F55")
+		Color("#3E585A")
 	)
 
 	for x in [-1.48, -1.26, -1.04]:
@@ -494,7 +509,7 @@ func _machine() -> void:
 			machine,
 			0.065,
 			Vector3(x, 1.15, 1.47),
-			Color("#8BE0AD")
+			Color("#8BAE94")
 		)
 
 	machine_label = V.label(
@@ -513,13 +528,12 @@ func _hire_zone(
 ) -> void:
 	var root := _platform(pos, color)
 
-	# Небольшой пьедестал для модели
 	V.cylinder(
 		root,
 		0.72,
 		0.16,
 		Vector3(0, 0.85, 0),
-		Color("#E7DFC9")
+		Color("#C8C0AB")
 	)
 
 	var prop := _floating_prop(
@@ -529,10 +543,9 @@ func _hire_zone(
 
 	match role:
 		0:
-			# Рыба и удочка
 			_fish_model(
 				prop,
-				Color("#89CFDF"),
+				Color("#8BB6BE"),
 				0.8
 			)
 
@@ -541,29 +554,27 @@ func _hire_zone(
 				0.035,
 				1.5,
 				Vector3(0.55, 0.3, 0),
-				Color("#78533C")
+				Color("#785E47")
 			)
 			rod.rotation.z = -0.3
 
 		1:
-			# Ящик с сырой рыбой
 			_crate_model(
 				prop,
-				Color("#A77A53")
+				Color("#9F8062")
 			)
 
 			var fish := _fish_model(
 				prop,
-				Color("#7FC2D3"),
+				Color("#85B0BA"),
 				0.45
 			)
 			fish.position.y = 0.36
 
 		2:
-			# Ящик с готовым филе
 			_crate_model(
 				prop,
-				Color("#9D765B")
+				Color("#987760")
 			)
 
 			for i in range(3):
@@ -575,30 +586,29 @@ func _hire_zone(
 						0.36,
 						0
 					),
-					Color("#F4A98A")
+					Color("#D9A28D")
 				)
 
 		3:
-			# Кассовый аппарат
 			V.box(
 				prop,
 				Vector3(0.85, 0.48, 0.62),
 				Vector3.ZERO,
-				Color("#426D70")
+				Color("#527576")
 			)
 
 			V.box(
 				prop,
 				Vector3(0.65, 0.23, 0.06),
 				Vector3(0, 0.09, -0.34),
-				Color("#A6E3BE")
+				Color("#94B9A1")
 			)
 
 			V.box(
 				prop,
 				Vector3(0.95, 0.1, 0.75),
 				Vector3(0, -0.27, 0),
-				Color("#29464B")
+				Color("#354F50")
 			)
 
 	var title_label := V.label(
@@ -635,25 +645,16 @@ func refresh_hire_prices(state: Node) -> void:
 		)
 
 		if state.coins >= state.prices[i]:
-			hire_labels[i].modulate = (
-				Color("#F6EEE1")
-			)
+			hire_labels[i].modulate = Color("#E8E2D6")
 		else:
-			hire_labels[i].modulate = (
-				Color("#D6C4B8")
-			)
+			hire_labels[i].modulate = Color("#B9ACA0")
 
 func refresh(state: Node) -> void:
 	if not is_instance_valid(fish_label):
 		return
 
-	fish_label.text = (
-		"РЫБА: %d" % state.fish_box
-	)
-
-	fillet_label.text = (
-		"ФИЛЕ: %d" % state.fillet_box
-	)
+	fish_label.text = "РЫБА: %d" % state.fish_box
+	fillet_label.text = "ФИЛЕ: %d" % state.fillet_box
 
 	machine_label.text = (
         "СТАНОК: %d / %d"
