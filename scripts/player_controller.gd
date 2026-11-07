@@ -37,12 +37,12 @@ var armed: bool = true
 var cooldown: float = 0.0
 
 var velocity: Vector3 = Vector3.ZERO
+var mobile_input: Vector2 = Vector2.ZERO
 
 var camera_target: Vector3 = Vector3.ZERO
 var camera_zoom_target: float = DEFAULT_ZOOM
 var camera_angle: float = DEFAULT_CAMERA_ANGLE
 var camera_angle_target: float = DEFAULT_CAMERA_ANGLE
-
 var camera_look_ahead: Vector3 = Vector3.ZERO
 
 var hire_inside: Array[bool] = [
@@ -116,16 +116,17 @@ func _unhandled_input(event: InputEvent) -> void:
 					camera_zoom_target + 2.0
 				)
 
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_Q:
-			camera_angle_target -= PI / 4.0
+	if event is InputEventKey:
+		if event.pressed and not event.echo:
+			if event.keycode == KEY_Q:
+				camera_angle_target -= PI / 4.0
 
-		elif event.keycode == KEY_E:
-			camera_angle_target += PI / 4.0
+			elif event.keycode == KEY_E:
+				camera_angle_target += PI / 4.0
 
-		elif event.keycode == KEY_R:
-			camera_angle_target = DEFAULT_CAMERA_ANGLE
-			camera_zoom_target = DEFAULT_ZOOM
+			elif event.keycode == KEY_R:
+				camera_angle_target = DEFAULT_CAMERA_ANGLE
+				camera_zoom_target = DEFAULT_ZOOM
 
 
 func _process(delta: float) -> void:
@@ -166,126 +167,35 @@ func _process(delta: float) -> void:
 	_update_camera(delta)
 
 
-func _animate(delta: float) -> void:
-	animation_time += delta
-
-	var body: Node3D = model["body"]
-	var left_arm: Node3D = model["left_arm"]
-	var right_arm: Node3D = model["right_arm"]
-	var left_leg: Node3D = model["left_leg"]
-	var right_leg: Node3D = model["right_leg"]
-
-	var speed: float = velocity.length()
-	var movement_weight: float = clampf(
-		speed / MOVE_SPEED,
-		0.0,
-		1.0
-	)
-
-	if fishing:
-		movement_weight = 0.0
-
-	var phase: float = animation_time * 10.0
-
-	var leg_swing: float = (
-		sin(phase) * 0.6 * movement_weight
-	)
-
-	var arm_swing: float = (
-		sin(phase) * 0.45 * movement_weight
-	)
-
-	var bob: float = (
-		absf(sin(phase))
-		* 0.08
-		* movement_weight
-	)
-
-	if movement_weight < 0.05:
-		bob += sin(animation_time * 2.0) * 0.012
-
-	var weight: float = minf(1.0, delta * 12.0)
-
-	left_leg.rotation.x = lerpf(
-		left_leg.rotation.x,
-		leg_swing,
-		weight
-	)
-
-	right_leg.rotation.x = lerpf(
-		right_leg.rotation.x,
-		-leg_swing,
-		weight
-	)
-
-	body.position.y = lerpf(
-		body.position.y,
-		bob,
-		weight
-	)
-
-	if fishing:
-		left_arm.rotation.x = lerpf(
-			left_arm.rotation.x,
-			-0.35,
-			weight
-		)
-
-		right_arm.rotation.x = lerpf(
-			right_arm.rotation.x,
-			-0.85 + sin(animation_time * 5.0) * 0.22,
-			weight
-		)
-
-		rod.rotation.x = (
-			-0.5 + sin(animation_time * 5.0) * 0.15
-		)
-	else:
-		left_arm.rotation.x = lerpf(
-			left_arm.rotation.x,
-			-arm_swing,
-			weight
-		)
-
-		right_arm.rotation.x = lerpf(
-			right_arm.rotation.x,
-			arm_swing,
-			weight
-		)
-
-		rod.rotation.x = lerpf(
-			rod.rotation.x,
-			-0.5,
-			weight
-		)
-
-
 func _move(delta: float) -> void:
-	var input_dir := Vector2.ZERO
+	var input_dir: Vector2 = Vector2.ZERO
 
 	if (
 		Input.is_key_pressed(KEY_A)
 		or Input.is_key_pressed(KEY_LEFT)
 	):
-		input_dir.x -= 1
+		input_dir.x -= 1.0
 
 	if (
 		Input.is_key_pressed(KEY_D)
 		or Input.is_key_pressed(KEY_RIGHT)
 	):
-		input_dir.x += 1
+		input_dir.x += 1.0
 
 	if (
 		Input.is_key_pressed(KEY_W)
 		or Input.is_key_pressed(KEY_UP)
 	):
-		input_dir.y -= 1
+		input_dir.y -= 1.0
 
 	if (
 		Input.is_key_pressed(KEY_S)
 		or Input.is_key_pressed(KEY_DOWN)
 	):
-		input_dir.y += 1
+		input_dir.y += 1.0
+
+	if mobile_input.length() > 0.01:
+		input_dir = mobile_input
 
 	input_dir = input_dir.limit_length(1.0)
 
@@ -322,8 +232,12 @@ func _move(delta: float) -> void:
 
 	position += velocity * delta
 
-	position.x = clampf(position.x, -17.0, 17.0)
-	position.z = clampf(position.z, -12.0, 17.0)
+	position.x = clampf(
+		position.x, -17.0, 17.0
+	)
+	position.z = clampf(
+		position.z, -12.0, 17.0
+	)
 
 	if position.x <= -17.0 or position.x >= 17.0:
 		velocity.x = 0.0
@@ -336,6 +250,105 @@ func _move(delta: float) -> void:
 			rotation.y,
 			atan2(velocity.x, velocity.z),
 			minf(1.0, delta * ROTATION_SPEED)
+		)
+
+
+func _animate(delta: float) -> void:
+	animation_time += delta
+
+	var body: Node3D = model["body"]
+	var left_arm: Node3D = model["left_arm"]
+	var right_arm: Node3D = model["right_arm"]
+	var left_leg: Node3D = model["left_leg"]
+	var right_leg: Node3D = model["right_leg"]
+
+	var speed: float = velocity.length()
+
+	var movement_weight: float = clampf(
+		speed / MOVE_SPEED,
+		0.0,
+		1.0
+	)
+
+	if fishing:
+		movement_weight = 0.0
+
+	var phase: float = animation_time * 10.0
+
+	var leg_swing: float = (
+		sin(phase) * 0.6 * movement_weight
+	)
+
+	var arm_swing: float = (
+		sin(phase) * 0.45 * movement_weight
+	)
+
+	var bob: float = (
+		absf(sin(phase))
+		* 0.08
+		* movement_weight
+	)
+
+	if movement_weight < 0.05:
+		bob += sin(animation_time * 2.0) * 0.012
+
+	var weight: float = minf(
+		1.0,
+		delta * 12.0
+	)
+
+	left_leg.rotation.x = lerpf(
+		left_leg.rotation.x,
+		leg_swing,
+		weight
+	)
+
+	right_leg.rotation.x = lerpf(
+		right_leg.rotation.x,
+		-leg_swing,
+		weight
+	)
+
+	body.position.y = lerpf(
+		body.position.y,
+		bob,
+		weight
+	)
+
+	if fishing:
+		left_arm.rotation.x = lerpf(
+			left_arm.rotation.x,
+			-0.35,
+			weight
+		)
+
+		right_arm.rotation.x = lerpf(
+			right_arm.rotation.x,
+			-0.85 + sin(animation_time * 5.0) * 0.22,
+			weight
+		)
+
+		rod.rotation.x = (
+			-0.5
+			+ sin(animation_time * 5.0) * 0.15
+		)
+	else:
+		left_arm.rotation.x = lerpf(
+			left_arm.rotation.x,
+			-arm_swing,
+			weight
+		)
+
+		right_arm.rotation.x = lerpf(
+			right_arm.rotation.x,
+			arm_swing,
+			weight
+		)
+
+		rod.rotation.x = lerpf(
+			rod.rotation.x,
+			-0.5,
+			weight
 		)
 
 
@@ -435,7 +448,7 @@ func _interact() -> void:
 		rod.visible = true
 
 		state.notice.emit(
-            "Ловим рыбу... 3 секунды"
+			"Ловим рыбу... 3 секунды"
 		)
 		return
 

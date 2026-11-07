@@ -24,6 +24,8 @@ var sale_label: Label3D
 var indicator: MeshInstance3D
 
 var belt_marks: Array[Node3D] = []
+var rollers: Array[Node3D] = []
+var processing_particles: Array[Dictionary] = []
 
 var clock: float = 0.0
 var sale_count: int = 0
@@ -182,6 +184,8 @@ func _build_machine() -> void:
 		S.MACHINE + Vector3(2.25, 1.99, 0)
 	)
 	add_child(fillet_display)
+	
+	_build_machine_effects()
 
 
 func _build_register() -> void:
@@ -491,6 +495,7 @@ func _process(delta: float) -> void:
 		return
 
 	clock += delta
+	_animate_machine_effects(delta)
 
 	if sale_label_timer > 0.0:
 		sale_label_timer = maxf(
@@ -580,3 +585,91 @@ func _process(delta: float) -> void:
 		indicator.material_override = V.material(color)
 
 	_update_labels()
+
+
+func _build_machine_effects() -> void:
+	for x in [-1.55, 1.55]:
+		var roller := Node3D.new()
+		roller.position = Vector3(x, 1.99, 0)
+		conveyor.add_child(roller)
+
+		var cylinder := V.cylinder(
+			roller,
+			0.16,
+			1.12,
+			Vector3.ZERO,
+			Color("#607D80")
+		)
+		cylinder.rotation.x = PI / 2.0
+
+		for angle in [0.0, PI / 2.0]:
+			var stripe := V.box(
+				roller,
+				Vector3(0.035, 0.035, 1.15),
+				Vector3(
+					cos(angle) * 0.16,
+					sin(angle) * 0.16,
+					0
+				),
+				Color("#B5C8C4")
+			)
+			stripe.rotation.z = angle
+
+		rollers.append(roller)
+
+	for i in range(7):
+		var particle := Node3D.new()
+		conveyor.add_child(particle)
+
+		var mesh := V.sphere(
+			particle,
+			0.035,
+			Vector3.ZERO,
+			Color("#C4E2DC")
+		)
+		mesh.cast_shadow = (
+			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		)
+
+		particle.visible = false
+
+		processing_particles.append({
+			"node": particle,
+			"phase": float(i) * 1.73,
+			"radius": 0.18 + float(i % 3) * 0.12
+		})
+
+
+func _animate_machine_effects(delta: float) -> void:
+	var working: bool = state != null and state.processing
+
+	for roller in rollers:
+		if working:
+			roller.rotation.z += delta * 4.5
+
+	for particle_data in processing_particles:
+		var particle: Node3D = particle_data["node"]
+		particle.visible = working
+
+		if not working:
+			continue
+
+		var phase: float = particle_data["phase"]
+		var radius: float = particle_data["radius"]
+		var t: float = fposmod(clock * 1.7 + phase, 1.0)
+
+		particle.position = Vector3(
+			sin(phase * 2.0) * radius,
+			2.12 + t * 0.65,
+			cos(phase * 2.0) * radius
+		)
+
+		particle.scale = Vector3.ONE * (1.0 - t * 0.65)
+
+	if is_instance_valid(indicator):
+		var brightness: float = 0.0
+
+		if working:
+			brightness = (sin(clock * 5.0) + 1.0) * 0.12
+
+		indicator.scale = Vector3.ONE * (1.0 + brightness)

@@ -32,6 +32,8 @@ var fish_indicator: MeshInstance3D
 var fillet_indicator: MeshInstance3D
 
 var time_passed: float = 0.0
+var fish_lamp: MeshInstance3D
+var fillet_lamp: MeshInstance3D
 
 
 func setup(game_state: Node) -> void:
@@ -206,6 +208,7 @@ func _build_storage(
 		fish_indicator = indicator
 	else:
 		fillet_indicator = indicator
+	_build_storage_details(root, is_fish)
 
 
 func _refresh() -> void:
@@ -217,7 +220,9 @@ func _refresh() -> void:
 
 	fish_counter.text = "РЫБА: %d" % new_fish
 	fillet_counter.text = "ФИЛЕ: %d" % new_fillets
-
+	
+	_update_storage_lamp(fish_lamp, new_fish)
+	_update_storage_lamp(fillet_lamp, new_fillets)
 	if new_fish != fish_count:
 		fish_count = new_fish
 		_sync_fish(mini(new_fish, MAX_VISIBLE))
@@ -467,3 +472,84 @@ func _process(delta: float) -> void:
 				sin(time_passed * 1.6 + float(i))
 				* 0.025
 			)
+
+func _build_storage_details(root: Node3D, is_fish: bool) -> void:
+	var accent := Color("#83B8C1")
+	if not is_fish:
+		accent = Color("#C7A18B")
+
+	for side in [-1.0, 1.0]:
+		var x: float = float(side) * 1.65
+
+		V.box(
+			root,
+			Vector3(0.48, 0.55, 0.65),
+			Vector3(x, 0.43, 0),
+			Color("#80664F")
+		)
+
+		V.box(
+			root,
+			Vector3(0.52, 0.09, 0.69),
+			Vector3(x, 0.73, 0),
+			Color("#AD8D6C")
+		)
+
+	if is_fish:
+		for i in range(8):
+			var x: float = -0.9 + float(i % 4) * 0.6
+			var z: float = -0.35 + float(i / 4) * 0.65
+
+			var ice_piece := V.box(
+				root,
+				Vector3(0.16, 0.08, 0.15),
+				Vector3(x, 1.19, z),
+				Color("#D4E8E4")
+			)
+
+			ice_piece.rotation.y = float(i) * 0.7
+	else:
+		for i in range(3):
+			V.box(
+				root,
+				Vector3(0.48, 0.08, 0.32),
+				Vector3(
+					-0.65 + float(i) * 0.65,
+					2.76,
+					0
+				),
+				Color("#E0C3A6")
+			)
+
+	V.box(
+		root,
+		Vector3(0.42, 0.38, 0.12),
+		Vector3(0.92, 1.77, -0.92),
+		Color("#344D52")
+	)
+
+	var lamp := V.sphere(
+		root,
+		0.11,
+		Vector3(0.92, 1.78, -1.02),
+		accent
+	)
+
+	if is_fish:
+		fish_lamp = lamp
+	else:
+		fillet_lamp = lamp
+
+
+func _update_storage_lamp(lamp: MeshInstance3D, amount: int) -> void:
+	if not is_instance_valid(lamp):
+		return
+
+	var color := Color("#C98B76")
+
+	if amount >= 50:
+		color = Color("#83B8A1")
+	elif amount >= 10:
+		color = Color("#D8BD7E")
+
+	lamp.material_override = V.material(color)

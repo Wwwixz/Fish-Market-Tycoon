@@ -28,6 +28,9 @@ func _ready() -> void:
 	_create_flowers()
 	_create_rocks()
 	_create_props()
+	_create_extra_details()
+	_create_dock_details()
+	_create_buoys()
 	_create_gulls()
 	_create_clouds()
 
@@ -473,3 +476,245 @@ func _process(delta: float) -> void:
 
 		if cloud.position.x > 38.0:
 			cloud.position.x = -38.0
+
+
+func _create_extra_details() -> void:
+	var bush_positions := [
+		Vector3(-15.5, 0, 6.0),
+		Vector3(-13.0, 0, 10.0),
+		Vector3(-10.0, 0, 14.0),
+		Vector3(11.5, 0, 13.0),
+		Vector3(14.0, 0, 8.0),
+		Vector3(15.5, 0, -5.0)
+	]
+
+	for pos in bush_positions:
+		_make_bush(pos)
+
+	var grass_positions := [
+		Vector3(-15, 0, -4),
+		Vector3(-13, 0, 5),
+		Vector3(-11, 0, 12),
+		Vector3(-8, 0, 15),
+		Vector3(10, 0, 15),
+		Vector3(13, 0, 11),
+		Vector3(16, 0, 5),
+		Vector3(15, 0, -7)
+	]
+
+	for pos in grass_positions:
+		_make_grass(pos)
+
+	_make_sign(
+		Vector3(-12.5, 0, -8.5),
+		"РЫБНЫЙ РЫНОК"
+	)
+
+
+func _make_bush(pos: Vector3) -> void:
+	var bush := Node3D.new()
+	bush.position = pos
+	add_child(bush)
+
+	var colors := [
+		Color("#65896B"),
+		Color("#779875"),
+		Color("#557A63")
+	]
+
+	for i in range(4):
+		var angle := float(i) * TAU / 4.0
+		var leaf := V.sphere(
+			bush,
+			0.48,
+			Vector3(
+				cos(angle) * 0.32,
+				0.48,
+				sin(angle) * 0.32
+			),
+			colors[i % colors.size()]
+		)
+
+		leaf.scale = Vector3(1.0, 0.75, 1.0)
+
+
+func _make_grass(pos: Vector3) -> void:
+	var grass := Node3D.new()
+	grass.position = pos
+	add_child(grass)
+
+	for i in range(5):
+		var blade := V.box(
+			grass,
+			Vector3(0.045, 0.32, 0.06),
+			Vector3(
+				(float(i) - 2.0) * 0.11,
+				0.27,
+				sin(float(i) * 2.0) * 0.09
+			),
+			Color("#648A64")
+		)
+
+		blade.rotation.z = (float(i) - 2.0) * 0.15
+
+
+func _make_sign(pos: Vector3, title: String) -> void:
+	var sign := Node3D.new()
+	sign.position = pos
+	add_child(sign)
+
+	V.box(
+		sign,
+		Vector3(0.18, 1.8, 0.18),
+		Vector3(0, 1.0, 0),
+		Color("#765A43")
+	)
+
+	V.box(
+		sign,
+		Vector3(2.6, 0.75, 0.16),
+		Vector3(0, 1.85, 0),
+		Color("#927153")
+	)
+
+	V.box(
+		sign,
+		Vector3(2.45, 0.6, 0.04),
+		Vector3(0, 1.85, -0.1),
+		Color("#B9956C")
+	)
+
+	var text_label := V.label(
+		sign,
+		title,
+		Vector3(0, 1.85, -0.17),
+		30
+	)
+
+	text_label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	text_label.rotation.y = 0.0
+	text_label.pixel_size = 0.004
+
+
+func _create_dock_details() -> void:
+	var dock_positions := [
+		Vector3(-5.0, 0, -11.0),
+		Vector3(9.0, 0, -11.0)
+	]
+
+	for pos in dock_positions:
+		_make_dock_details(pos)
+
+
+func _make_dock_details(pos: Vector3) -> void:
+	var dock := Node3D.new()
+	dock.position = pos
+	add_child(dock)
+
+	var wood := Color("#876A50")
+	var wood_light := Color("#A48765")
+	var rope := Color("#C6B18B")
+
+	for side in [-1.0, 1.0]:
+		for i in range(3):
+			var z := float(i) * 1.8 - 1.8
+
+			V.cylinder(
+				dock,
+				0.13,
+				1.25,
+				Vector3(side * 1.85, 0.55, z),
+				wood
+			)
+
+			V.cylinder(
+				dock,
+				0.17,
+				0.12,
+				Vector3(side * 1.85, 1.22, z),
+				wood_light
+			)
+
+	for side in [-1.0, 1.0]:
+		for i in range(2):
+			var z := float(i) * 1.8 - 0.9
+
+			var rail := V.box(
+				dock,
+				Vector3(0.06, 0.06, 1.75),
+				Vector3(side * 1.85, 0.95, z),
+				rope
+			)
+
+			rail.cast_shadow = (
+				GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			)
+
+	for i in range(3):
+		var z := float(i) * 1.3 - 1.3
+
+		V.box(
+			dock,
+			Vector3(0.85, 0.09, 0.12),
+			Vector3(-0.95, 0.53, z),
+			wood_light
+		)
+
+
+func _create_buoys() -> void:
+	var positions := [
+		Vector3(-23, -0.4, -9),
+		Vector3(-21, -0.4, 5),
+		Vector3(23, -0.4, -8),
+		Vector3(21, -0.4, 8),
+		Vector3(-8, -0.4, -19),
+		Vector3(9, -0.4, -19)
+	]
+
+	for i in range(positions.size()):
+		_make_buoy(
+			positions[i],
+			i % 2 == 0
+		)
+
+
+func _make_buoy(
+	pos: Vector3,
+	is_red: bool
+) -> void:
+	var buoy := Node3D.new()
+	buoy.position = pos
+	add_child(buoy)
+
+	var main_color := Color("#C47768")
+	if not is_red:
+		main_color = Color("#D6BE83")
+
+	var body := V.sphere(
+		buoy,
+		0.34,
+		Vector3.ZERO,
+		main_color
+	)
+
+	body.scale = Vector3(1.0, 1.15, 1.0)
+
+	V.cylinder(
+		buoy,
+		0.045,
+		0.5,
+		Vector3(0, 0.48, 0),
+		Color("#E4DFCF")
+	)
+
+	V.sphere(
+		buoy,
+		0.09,
+		Vector3(0, 0.76, 0),
+		Color("#F2E6CC")
+	)
+
+	water_ripples.append({
+		"node": buoy,
+		"phase": rng.randf_range(0.0, TAU)
+	})

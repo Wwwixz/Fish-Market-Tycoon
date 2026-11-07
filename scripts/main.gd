@@ -20,6 +20,11 @@ const ExpansionManager = preload("res://scripts/expansion_manager.gd")
 const EnvironmentVisuals = preload("res://scripts/environment_visuals.gd")
 const SaveManager = preload("res://scripts/save_manager.gd")
 
+const QuestManager = preload("res://scripts/quest_manager.gd")
+const QuestUI = preload("res://scripts/quest_ui.gd")
+const DailyManager = preload("res://scripts/daily_manager.gd")
+const MobileControls = preload("res://scripts/mobile_controls.gd")
+
 var state: Node
 var world: Node3D
 var player: Node3D
@@ -38,6 +43,11 @@ var customer_manager: Node3D
 var expansion_manager: Node3D
 var environment_visuals: Node3D
 var save_manager: Node
+
+var quest_manager: Node
+var quest_ui: CanvasLayer
+var daily_manager: Node
+var mobile_controls: CanvasLayer
 
 
 func _ready() -> void:
@@ -69,15 +79,32 @@ func _ready() -> void:
 
 	player.set("worker_manager", workers)
 
+	mobile_controls = MobileControls.new()
+	mobile_controls.name = "MobileControls"
+	mobile_controls.call("setup", player)
+	add_child(mobile_controls)
+
 	progression = Progression.new()
 	progression.name = "ProgressionManager"
 	progression.call("setup", state)
 	add_child(progression)
 
+	quest_manager = QuestManager.new()
+	quest_manager.name = "QuestManager"
+	quest_manager.call("setup", state)
+	add_child(quest_manager)
+
+	daily_manager = DailyManager.new()
+	daily_manager.name = "DailyManager"
+	daily_manager.call("setup", state)
+	add_child(daily_manager)
+
 	save_manager = SaveManager.new()
 	save_manager.name = "SaveManager"
 	save_manager.call("setup", state, player, workers)
 	save_manager.set("progression", progression)
+	save_manager.set("quest_manager", quest_manager)
+	save_manager.set("daily_manager", daily_manager)
 	add_child(save_manager)
 
 	var loaded_data: Dictionary = save_manager.call("load_game")
@@ -87,6 +114,8 @@ func _ready() -> void:
 
 		if player.has_method("_update_camera"):
 			player.call("_update_camera", 1.0, true)
+
+	daily_manager.call("finish_loading")
 
 	boats = Boats.new()
 	boats.name = "Boats"
@@ -137,6 +166,17 @@ func _ready() -> void:
 	ui.call("setup", state, guide, workers)
 	ui.set("progression", progression)
 	add_child(ui)
+
+	quest_ui = QuestUI.new()
+	quest_ui.name = "QuestUI"
+	quest_ui.call(
+		"setup",
+		quest_manager,
+		daily_manager
+	)
+	add_child(quest_ui)
+	ui.modal_opened.connect(quest_ui._close)
+	quest_ui.modal_opened.connect(ui._close_menu)
 
 	state.reward.connect(_reward)
 	state.changed.connect(_refresh)

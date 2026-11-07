@@ -1,6 +1,7 @@
 
 extends Node
 
+const S = preload("res://scripts/game_state.gd")
 signal experience_gained(amount: int)
 signal level_up(new_level: int)
 
@@ -37,6 +38,7 @@ func xp_required(current_level: int = level) -> int:
 	return 50 + (current_level - 1) * 35
 
 
+
 func add_xp(amount: int) -> void:
 	if amount <= 0 or level >= MAX_LEVEL:
 		return
@@ -47,7 +49,7 @@ func add_xp(amount: int) -> void:
 	experience_gained.emit(amount)
 
 	while level < MAX_LEVEL:
-		var required := xp_required()
+		var required: int = xp_required()
 
 		if xp < required:
 			break
@@ -62,9 +64,28 @@ func add_xp(amount: int) -> void:
 				"Новый уровень: %d!" % level
 			)
 
+			if level % 5 == 0:
+				var bonus: int = level * 25
+				state.coins += bonus
+
+				state.notice.emit(
+					"Награда за уровень %d: +%d монет!" %
+					[level, bonus]
+				)
+
+				state.reward.emit(
+					bonus,
+					"🪙",
+					Color("#E9C77C"),
+					S.CASH
+				)
+
+				state.changed.emit()
+
 		if level >= MAX_LEVEL:
 			xp = 0
 			break
+
 
 
 func get_progress() -> float:

@@ -47,6 +47,7 @@ func hire(role: int) -> void:
 		node,
 		colors[role]
 	)
+	_decorate_worker(model, role)
 
 	V.label(
 		node,
@@ -330,6 +331,7 @@ func _seller(w: Dictionary, delta: float) -> void:
 			if float(w["timer"]) >= 0.8:
 				w["step"] = "waiting"
 
+
 func _animate(w: Dictionary, delta: float) -> void:
 	var model: Dictionary = w["model"]
 
@@ -339,83 +341,200 @@ func _animate(w: Dictionary, delta: float) -> void:
 	var left_leg: Node3D = model["left_leg"]
 	var right_leg: Node3D = model["right_leg"]
 	var cargo_anchor: Node3D = model["cargo_anchor"]
+	var rod: Node3D = w["rod"]
 
-	var phase: float = elapsed * 10.0 + float(w["phase"])
+	var role: int = int(w["role"])
+	var step_name: String = String(w["step"])
+
+	var phase: float = elapsed * 9.0 + float(w["phase"])
+	var blend: float = minf(1.0, delta * 10.0)
+
 	var moving: bool = bool(w["moving"])
 	var carrying: bool = int(w["cargo"]) > 0
-	var fishing: bool = String(w["step"]) == "fishing"
-	var serving: bool = String(w["step"]) == "serving"
+	var fishing: bool = step_name == "fishing"
+	var serving: bool = step_name == "serving"
 
-	var target_leg: float = 0.0
-	var target_arm: float = 0.0
-	var target_bob: float = 0.0
+	var leg_swing: float = 0.0
+	var left_target: float = 0.0
+	var right_target: float = 0.0
+	var bob: float = 0.0
+	var body_tilt: float = 0.0
 
 	if moving:
-		target_leg = sin(phase) * 0.55
-		target_arm = sin(phase) * 0.42
-		target_bob = absf(sin(phase)) * 0.08
+		leg_swing = sin(phase) * 0.52
+		bob = absf(sin(phase)) * 0.07
+
+		left_target = -sin(phase) * 0.35
+		right_target = sin(phase) * 0.35
+
+		if carrying:
+			leg_swing *= 0.75
+			bob *= 0.65
+			left_target = -0.95
+			right_target = -0.95
+			body_tilt = -0.05
+
+	elif carrying:
+		left_target = -0.95
+		right_target = -0.95
+		body_tilt = -0.04
+
+	elif fishing:
+		left_target = -0.45
+		right_target = -0.9 + sin(elapsed * 4.0) * 0.16
+		body_tilt = sin(elapsed * 2.0) * 0.035
+
+	elif serving:
+		left_target = -0.55 + sin(elapsed * 9.0) * 0.12
+		right_target = -0.8 + sin(elapsed * 12.0) * 0.24
+		body_tilt = -0.045
+
+	else:
+		bob = sin(elapsed * 1.8 + float(w["phase"])) * 0.012
+
+		if role == 3:
+			left_target = -0.12
+			right_target = -0.12
 
 	left_leg.rotation.x = lerpf(
 		left_leg.rotation.x,
-		target_leg,
-		minf(1.0, delta * 12.0)
+		leg_swing,
+		blend
 	)
 
 	right_leg.rotation.x = lerpf(
 		right_leg.rotation.x,
-		-target_leg,
-		minf(1.0, delta * 12.0)
+		-leg_swing,
+		blend
+	)
+
+	left_arm.rotation.x = lerpf(
+		left_arm.rotation.x,
+		left_target,
+		blend
+	)
+
+	right_arm.rotation.x = lerpf(
+		right_arm.rotation.x,
+		right_target,
+		blend
 	)
 
 	body.position.y = lerpf(
 		body.position.y,
-		target_bob,
-		minf(1.0, delta * 10.0)
+		bob,
+		blend
+	)
+
+	body.rotation.x = lerpf(
+		body.rotation.x,
+		body_tilt,
+		blend
 	)
 
 	if carrying:
-		left_arm.rotation.x = lerpf(
-			left_arm.rotation.x,
-			-0.95,
-			minf(1.0, delta * 12.0)
-		)
-
-		right_arm.rotation.x = lerpf(
-			right_arm.rotation.x,
-			-0.95,
-			minf(1.0, delta * 12.0)
-		)
-
 		cargo_anchor.position.y = (
-			0.95 + sin(phase) * 0.025
+			0.95 + sin(phase) * 0.018
 		)
-
-	elif fishing:
-		left_arm.rotation.x = -0.35
-		right_arm.rotation.x = (
-			-0.85 + sin(elapsed * 5.0) * 0.22
-		)
-
-		var rod: Node3D = w["rod"]
-		rod.rotation.x = (
-			-0.5 + sin(elapsed * 5.0) * 0.15
-		)
-
-	elif serving:
-		left_arm.rotation.x = -0.65
-		right_arm.rotation.x = (
-			-0.7 + sin(elapsed * 14.0) * 0.25
-		)
-
 	else:
-		left_arm.rotation.x = lerpf(
-			left_arm.rotation.x,
-			-target_arm,
-			minf(1.0, delta * 10.0)
+		cargo_anchor.position.y = lerpf(
+			cargo_anchor.position.y,
+			0.95,
+			blend
 		)
 
-		right_arm.rotation.x = lerpf(
-			right_arm.rotation.x,
-			target_arm,
-			minf(1.0, delta * 10.0)
+	if fishing:
+		rod.rotation.x = lerpf(
+			rod.rotation.x,
+			-0.5 + sin(elapsed * 4.0) * 0.22,
+			blend
 		)
+
+		rod.rotation.z = lerpf(
+			rod.rotation.z,
+			sin(elapsed * 2.5) * 0.08,
+			blend
+		)
+	else:
+		rod.rotation.x = lerpf(
+			rod.rotation.x,
+			-0.5,
+			blend
+		)
+
+		rod.rotation.z = lerpf(
+			rod.rotation.z,
+			0.0,
+			blend
+		)
+
+func _decorate_worker(model: Dictionary, role: int) -> void:
+	var body: Node3D = model["body"]
+
+	match role:
+		0:
+			# Рыбак: широкополая шляпа
+			V.cylinder(
+				body,
+				0.52,
+				0.10,
+				Vector3(0, 1.78, 0),
+				Color("#B49A70")
+			)
+
+			V.cylinder(
+				body,
+				0.32,
+				0.28,
+				Vector3(0, 1.94, 0),
+				Color("#9C815C")
+			)
+
+		1:
+			# Грузчик рыбы: рабочий фартук
+			V.box(
+				body,
+				Vector3(0.52, 0.65, 0.08),
+				Vector3(0, 0.78, -0.33),
+				Color("#4D7E91")
+			)
+
+			V.box(
+				body,
+				Vector3(0.40, 0.08, 0.09),
+				Vector3(0, 0.62, -0.39),
+				Color("#A4C4CA")
+			)
+
+		2:
+			# Грузчик филе: светлый жилет
+			V.box(
+				body,
+				Vector3(0.57, 0.57, 0.09),
+				Vector3(0, 0.93, -0.33),
+				Color("#D1C9B6")
+			)
+
+			for x in [-0.20, 0.20]:
+				V.box(
+					body,
+					Vector3(0.07, 0.56, 0.11),
+					Vector3(x, 0.93, -0.39),
+					Color("#9C8D7D")
+				)
+
+		3:
+			# Продавец: фартук и бейдж
+			V.box(
+				body,
+				Vector3(0.52, 0.67, 0.08),
+				Vector3(0, 0.80, -0.33),
+				Color("#4B8068")
+			)
+
+			V.box(
+				body,
+				Vector3(0.22, 0.12, 0.05),
+				Vector3(0.16, 1.10, -0.39),
+				Color("#E1C58B")
+			)

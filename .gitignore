@@ -1,0 +1,24 @@
+
+# Godot generated files
+.godot/
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Android builds
+*.apk
+*.aab
+
+# Export credentials
+*.keystore
+*.jks
+
+# Editor files
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
