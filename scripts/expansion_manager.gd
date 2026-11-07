@@ -40,6 +40,7 @@ func _ready() -> void:
 
 	for i in range(3):
 		_build_pad(i)
+		inside[i] = Vector2(player.position.x - S.EXPANSION_POSITIONS[i].x, player.position.z - S.EXPANSION_POSITIONS[i].z).length() < RADIUS
 
 	if state != null:
 		state.changed.connect(refresh)
@@ -271,6 +272,8 @@ func _show_info(index: int) -> void:
 
 func _process(delta: float) -> void:
 	if state == null or not is_instance_valid(player):
+		return
+	if state.controls_blocked:
 		return
 
 	_find_world()

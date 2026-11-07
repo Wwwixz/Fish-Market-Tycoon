@@ -20,7 +20,6 @@ var day: String = ""
 var daily_progress: Array[int] = [0, 0, 0]
 var daily_done: Array[bool] = [false, false, false]
 var achievement_done: Array[bool] = [false, false, false]
-var fish_total: int = 0
 var day_timer: float = 0.0
 var loading: bool = true
 
@@ -35,7 +34,7 @@ func _ready() -> void:
 	if state == null:
 		return
 
-	state.reward.connect(_on_reward)
+	state.fish_caught.connect(_on_fish_caught)
 	state.customer_sale_completed.connect(_on_customer_sale)
 	state.sale_completed.connect(_on_boat_sale)
 	state.changed.connect(_check_achievements)
@@ -62,7 +61,8 @@ func _process(delta: float) -> void:
 func _check_day() -> void:
 	var today: String = Time.get_date_string_from_system()
 
-	if today == day:
+	# Moving the clock backwards must not make the same rewards available again.
+	if today <= day:
 		return
 
 	day = today
@@ -71,17 +71,8 @@ func _check_day() -> void:
 	updated.emit()
 
 
-func _on_reward(
-	amount: int,
-	icon: String,
-	_color: Color,
-	_position: Vector3
-) -> void:
-	if loading:
-		return
-
-	if icon == "🐟":
-		fish_total += amount
+func _on_fish_caught(amount: int, by_player: bool) -> void:
+	if not loading and by_player:
 		_add_daily(0, amount)
 
 
@@ -108,6 +99,8 @@ func _on_boat_sale(
 
 
 func _add_daily(index: int, amount: int) -> void:
+	if loading or amount <= 0:
+		return
 	_check_day()
 
 	if daily_done[index]:
@@ -191,18 +184,22 @@ func get_achievement_progress(index: int) -> int:
 
 
 func get_save_data() -> Dictionary:
+	if not loading:
+		_check_day()
 	return {
 		"day": day,
 		"daily_progress": daily_progress.duplicate(),
 		"daily_done": daily_done.duplicate(),
-		"achievement_done": achievement_done.duplicate(),
-		"fish_total": fish_total
+		"achievement_done": achievement_done.duplicate()
 	}
 
 
 func load_save_data(data: Dictionary) -> void:
+	loading = true
+	daily_progress = [0, 0, 0]
+	daily_done = [false, false, false]
+	achievement_done = [false, false, false]
 	day = str(data.get("day", day))
-	fish_total = maxi(0, int(data.get("fish_total", 0)))
 
 	var saved_progress: Variant = data.get("daily_progress", [])
 	var saved_daily: Variant = data.get("daily_done", [])
@@ -228,3 +225,7 @@ func load_save_data(data: Dictionary) -> void:
 	):
 		for i in range(3):
 			achievement_done[i] = bool(saved_achievements[i])
+	for i in range(DAILY.size()):
+		daily_done[i] = daily_done[i] or daily_progress[i] >= int(DAILY[i]["target"])
+		if daily_done[i]:
+			daily_progress[i] = int(DAILY[i]["target"])

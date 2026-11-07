@@ -14,9 +14,43 @@ func setup(game_state: Node) -> void:
 	state = game_state
 
 func hire(role: int) -> void:
+	if role < 0 or role >= state.hired.size():
+		return
+	if state.hired[role] >= S.MAX_WORKERS_PER_ROLE:
+		state.notice.emit("Достигнут лимит работников этой профессии")
+		return
 	if not state.hire(role):
 		state.notice.emit("Недостаточно монет!")
 		return
+	_spawn_worker(role)
+	var node: Node3D = workers.back()["node"]
+	state.reward.emit(1, "👷", Color("#F2D58D"), node.global_position)
+
+
+func restore_workers() -> void:
+	# Rebuild models without purchases, price changes, notices or reward signals.
+	for worker in workers:
+		var node: Node3D = worker["node"]
+		remove_child(node)
+		node.queue_free()
+	workers.clear()
+	for role in range(state.hired.size()):
+		for _index in range(state.hired[role]):
+			_spawn_worker(role)
+
+
+func get_carried_resources() -> Dictionary:
+	# On reload, return cargo to stock instead of losing it with transient routes.
+	var cargo := {"fish": 0, "fillets": 0}
+	for worker in workers:
+		if int(worker["role"]) in [0, 1]:
+			cargo["fish"] += int(worker["cargo"])
+		elif int(worker["role"]) == 2:
+			cargo["fillets"] += int(worker["cargo"])
+	return cargo
+
+
+func _spawn_worker(role: int) -> void:
 
 	var colors := [
 		Color("#428DB6"),
@@ -86,13 +120,6 @@ func hire(role: int) -> void:
 	}
 
 	workers.append(worker)
-
-	state.reward.emit(
-		1,
-		"👷",
-		Color("#F2D58D"),
-		node.global_position
-	)
 
 func _process(delta: float) -> void:
 	if state == null:
@@ -199,6 +226,7 @@ func _fisher(w: Dictionary, delta: float) -> void:
 
 				var amount: int = state.carrying_capacity()
 				_carry(w, amount)
+				state.record_fish_caught(amount, false)
 
 				state.reward.emit(
 					amount,

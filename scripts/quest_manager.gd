@@ -28,6 +28,7 @@ var state: Node
 var progress: Array[int] = [0, 0, 0]
 var completed: Array[bool] = [false, false, false]
 var initialized: bool = false
+var loading: bool = true
 
 
 func setup(game_state: Node) -> void:
@@ -38,21 +39,21 @@ func _ready() -> void:
 	if state == null:
 		return
 
-	state.reward.connect(_on_reward)
+	state.fish_caught.connect(_on_fish_caught)
 	state.customer_sale_completed.connect(_on_customer_sale)
 	state.changed.connect(_on_state_changed)
 
 	initialized = true
+
+
+func finish_loading() -> void:
+	loading = false
 	_update_workers()
+	quests_updated.emit()
 
 
-func _on_reward(
-	amount: int,
-	icon: String,
-	_color: Color,
-	_position: Vector3
-) -> void:
-	if icon == "🐟":
+func _on_fish_caught(amount: int, by_player: bool) -> void:
+	if not loading and by_player:
 		_add_progress(0, amount)
 
 
@@ -80,14 +81,14 @@ func _update_workers() -> void:
 
 
 func _add_progress(index: int, amount: int) -> void:
-	if completed[index] or amount <= 0:
+	if loading or completed[index] or amount <= 0:
 		return
 
 	_set_progress(index, progress[index] + amount)
 
 
 func _set_progress(index: int, amount: int) -> void:
-	if completed[index]:
+	if loading or completed[index]:
 		return
 
 	var target: int = int(QUESTS[index]["target"])
@@ -97,10 +98,10 @@ func _set_progress(index: int, amount: int) -> void:
 		return
 
 	progress[index] = new_progress
-	quests_updated.emit()
-
 	if progress[index] >= target:
 		_complete(index)
+	else:
+		quests_updated.emit()
 
 
 func _complete(index: int) -> void:
@@ -154,6 +155,9 @@ func get_save_data() -> Dictionary:
 
 
 func load_save_data(data: Dictionary) -> void:
+	loading = true
+	progress = [0, 0, 0]
+	completed = [false, false, false]
 	var saved_progress: Variant = data.get("progress", [])
 	var saved_completed: Variant = data.get("completed", [])
 
@@ -172,6 +176,8 @@ func load_save_data(data: Dictionary) -> void:
 				completed[i] = bool(saved_completed[i])
 
 	for i in range(QUESTS.size()):
+		# Old snapshots could be taken between progress and reward notifications.
+		completed[i] = completed[i] or progress[i] >= int(QUESTS[i]["target"])
 		if completed[i]:
 			progress[i] = int(QUESTS[i]["target"])
 

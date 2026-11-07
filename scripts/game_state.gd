@@ -10,6 +10,12 @@ signal sale_completed(amount: int, fillets: int)
 signal customer_sale_completed(amount: int, fillets: int)
 signal upgrade_purchased(role: int, level: int)
 signal expansion_purchased(role: int, level: int)
+signal fish_caught(amount: int, by_player: bool)
+signal worker_hired(role: int)
+
+const MAX_WORKERS_PER_ROLE := 100
+const MAX_UPGRADE_LEVEL := 100
+const MAX_PRICE := 1_000_000_000_000
 
 const FISHING := Vector3(-8, 0, -9)
 const FISH_BOX := Vector3(-5, 0, -5)
@@ -59,6 +65,9 @@ const EXPANSION_MAX_LEVELS := [3, 5, 2]
 var coins: int = 0
 var player_fish: int = 0
 var player_fillets: int = 0
+var player_fish_caught: int = 0
+var worker_fish_caught: int = 0
+var controls_blocked: bool = false
 var fish_box: int = 0
 var machine_input: int = 0
 var machine_output: int = 0
@@ -118,6 +127,8 @@ func customer_spawn_interval() -> float:
 func upgrade(role: int) -> bool:
 	if role < 0 or role >= 4:
 		return false
+	if upgrade_levels[role] >= MAX_UPGRADE_LEVEL:
+		return false
 
 	var price: int = upgrade_prices[role]
 	if coins < price:
@@ -125,7 +136,7 @@ func upgrade(role: int) -> bool:
 
 	coins -= price
 	upgrade_levels[role] += 1
-	upgrade_prices[role] = int(ceil(float(price) * 1.65))
+	upgrade_prices[role] = mini(MAX_PRICE, int(ceil(float(price) * 1.65)))
 
 	upgrade_purchased.emit(role, upgrade_levels[role])
 	notice.emit("%s: уровень %d!" % [
@@ -159,15 +170,28 @@ func buy_expansion(role: int) -> bool:
 func hire(role: int) -> bool:
 	if role < 0 or role >= 4:
 		return false
+	if hired[role] >= MAX_WORKERS_PER_ROLE:
+		return false
 	if coins < prices[role]:
 		return false
 
 	coins -= prices[role]
 	hired[role] += 1
-	prices[role] = int(ceil(float(prices[role]) * 1.6))
+	prices[role] = mini(MAX_PRICE, int(ceil(float(prices[role]) * 1.6)))
 	notice.emit("Работник нанят!")
+	worker_hired.emit(role)
 	changed.emit()
 	return true
+
+func record_fish_caught(amount: int, by_player: bool) -> void:
+	if amount <= 0:
+		return
+	if by_player:
+		player_fish_caught += amount
+	else:
+		worker_fish_caught += amount
+	fish_caught.emit(amount, by_player)
+	changed.emit()
 
 func _process(delta: float) -> void:
 	if not processing and machine_input > 0:

@@ -2,6 +2,7 @@
 extends CanvasLayer
 
 signal modal_opened
+signal modal_closed
 
 const UITheme = preload("res://scripts/ui_theme.gd")
 
@@ -261,7 +262,7 @@ func _build_menu() -> void:
 
 	var close := Button.new()
 	close.text = "✕"
-	close.custom_minimum_size = Vector2(48, 48)
+	close.custom_minimum_size = Vector2(UITheme.TOUCH_SIZE, UITheme.TOUCH_SIZE)
 	close.pressed.connect(_close_menu)
 	header.add_child(close)
 
@@ -272,7 +273,7 @@ func _build_menu() -> void:
 		var b := Button.new()
 		b.text = ["Команда", "Ресурсы", "Статистика"][i]
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.custom_minimum_size.y = 48
+		b.custom_minimum_size.y = 56
 		b.add_theme_font_size_override("font_size", 16)
 		b.clip_text = true
 		menu_tabs.append(b)
@@ -296,32 +297,34 @@ func _build_menu() -> void:
 
 func _resize() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
+	var safe := UITheme.safe_rect(get_viewport())
 	var margin: float = 16.0
 	var actions_width: float = 112.0
-	var panel_width: float = minf(370.0, screen.x - margin * 3.0 - actions_width)
+	var panel_width: float = minf(370.0, safe.size.x - margin * 3.0 - actions_width)
 	money.add_theme_font_size_override("font_size", 20 if screen.x < 500.0 else 26)
 
-	top_panel.position = Vector2(margin, margin)
+	top_panel.position = safe.position + Vector2(margin, margin)
 	top_panel.size = Vector2(panel_width, 80)
-	boat_panel.position = Vector2(margin, 108)
+	boat_panel.position = safe.position + Vector2(margin, 108)
 	boat_panel.size = Vector2(panel_width, 100)
-	menu_button.position = Vector2(screen.x - margin - actions_width, margin)
-	menu_button.size = Vector2(actions_width, 52)
+	menu_button.position = Vector2(safe.end.x - margin - actions_width, safe.position.y + margin)
+	menu_button.size = Vector2(actions_width, UITheme.TOUCH_SIZE)
 
-	var bottom_width: float = minf(screen.x - margin * 2.0, 560.0)
+	var bottom_width: float = minf(safe.size.x - margin * 2.0, 560.0)
 	bottom_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	bottom_panel.offset_left = (screen.x - bottom_width) * 0.5
-	bottom_panel.offset_right = -(screen.x - bottom_width) * 0.5
-	bottom_panel.offset_top = -112.0
-	bottom_panel.offset_bottom = -16.0
+	bottom_panel.offset_left = safe.position.x + (safe.size.x - bottom_width) * 0.5
+	bottom_panel.offset_right = bottom_panel.offset_left + bottom_width - screen.x
+	bottom_panel.offset_top = safe.end.y - screen.y - 112.0
+	bottom_panel.offset_bottom = safe.end.y - screen.y - margin
 
-	var window_width: float = minf(540.0, screen.x - 32.0)
-	var window_height: float = minf(760.0, screen.y - 40.0)
-	menu_window.offset_left = -window_width / 2.0
-	menu_window.offset_right = window_width / 2.0
-	menu_window.offset_top = -window_height / 2.0
-	menu_window.offset_bottom = window_height / 2.0
+	var window_width: float = minf(540.0, safe.size.x - 32.0)
+	var window_height: float = minf(820.0, safe.size.y - 40.0)
+	var center_offset: Vector2 = safe.get_center() - screen * 0.5
+	menu_window.offset_left = center_offset.x - window_width / 2.0
+	menu_window.offset_right = center_offset.x + window_width / 2.0
+	menu_window.offset_top = center_offset.y - window_height / 2.0
+	menu_window.offset_bottom = center_offset.y + window_height / 2.0
 	for i in range(menu_tabs.size()):
 		menu_tabs[i].text = ["Люди", "Запасы", "Итоги"][i] if screen.x < 440.0 else ["Команда", "Ресурсы", "Статистика"][i]
 		menu_tabs[i].add_theme_font_size_override("font_size", 14 if screen.x < 440.0 else 16)
@@ -344,9 +347,12 @@ func _open_menu() -> void:
 
 
 func _close_menu() -> void:
+	var was_open: bool = overlay.visible
 	layer = 20
 	overlay.visible = false
 	menu_button.visible = true
+	if was_open:
+		modal_closed.emit()
 
 
 func _select_menu(index: int) -> void:
@@ -415,7 +421,7 @@ func _build_workers_content() -> void:
 		var hire_button := Button.new()
 		hire_button.theme_type_variation = "PrimaryButton"
 		hire_button.text = "Нанять · %d монет" % price
-		hire_button.custom_minimum_size.y = 43
+		hire_button.custom_minimum_size.y = UITheme.TOUCH_SIZE
 		hire_button.disabled = state.coins < price
 		hire_button.add_theme_color_override(
 			"font_color", BG
@@ -449,6 +455,8 @@ func _build_resources_content() -> void:
 func _build_stats_content() -> void:
 	var lines := [
 		"Монеты: %d" % state.coins,
+		"Поймано игроком: %d" % state.player_fish_caught,
+		"Поймано работниками: %d" % state.worker_fish_caught,
 		"Обслужено лодок: %d" % state.served,
 		"Обслужено покупателей: %d" % state.customers_served,
 		"Потеряно покупателей: %d" % state.customers_lost

@@ -102,6 +102,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if state != null and state.controls_blocked:
+		return
 	if event is InputEventMouseButton:
 		if event.pressed:
 			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -132,6 +134,12 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if state == null:
 		return
+	if state.controls_blocked:
+		velocity = Vector3.ZERO
+		mobile_input = Vector2.ZERO
+		_animate(delta)
+		_update_camera(delta)
+		return
 
 	cooldown = maxf(0.0, cooldown - delta)
 
@@ -149,6 +157,7 @@ func _process(delta: float) -> void:
 			rod.rotation.x = -0.5
 
 			state.player_fish += 1
+			state.record_fish_caught(1, true)
 
 			state.reward.emit(
 				1,
@@ -358,6 +367,9 @@ func _update_camera(
 ) -> void:
 	if camera == null:
 		return
+	var viewport_size := get_viewport().get_visible_rect().size
+	# Preserve the short axis so a tall phone does not crop the world horizontally.
+	camera.keep_aspect = Camera3D.KEEP_WIDTH if viewport_size.y > viewport_size.x else Camera3D.KEEP_HEIGHT
 
 	var follow_weight: float = minf(
 		1.0,
@@ -421,6 +433,12 @@ func _update_camera(
 		camera_target + Vector3(0, 0.5, 0),
 		Vector3.UP
 	)
+
+
+func adjust_camera_zoom(amount: float) -> void:
+	if state != null and state.controls_blocked:
+		return
+	camera_zoom_target = clampf(camera_zoom_target + amount, MIN_ZOOM, MAX_ZOOM)
 
 
 func near(
@@ -513,3 +531,8 @@ func _check_hire_zones() -> void:
 			worker_manager.call("hire", i)
 
 		hire_inside[i] = inside
+
+
+func prime_hire_zones() -> void:
+	for i in range(S.HIRE_POSITIONS.size()):
+		hire_inside[i] = near(S.HIRE_POSITIONS[i], 1.25)

@@ -1,6 +1,8 @@
 
 extends Node3D
 
+const UITheme = preload("res://scripts/ui_theme.gd")
+
 const V = preload("res://scripts/visuals.gd")
 const S = preload("res://scripts/game_state.gd")
 
@@ -679,6 +681,8 @@ func _build_info_panel() -> void:
 	info_panel.add_child(content)
 
 	info_title = Label.new()
+	info_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info_title.max_lines_visible = 2
 	info_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	info_title.add_theme_font_size_override(
 		"font_size",
@@ -691,6 +695,8 @@ func _build_info_panel() -> void:
 	content.add_child(info_title)
 
 	info_description = Label.new()
+	info_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info_description.max_lines_visible = 2
 	info_description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	info_description.add_theme_font_size_override(
 		"font_size",
@@ -703,12 +709,26 @@ func _build_info_panel() -> void:
 	content.add_child(info_description)
 
 	info_price = Label.new()
+	info_price.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info_price.max_lines_visible = 2
 	info_price.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	info_price.add_theme_font_size_override(
 		"font_size",
 		15
 	)
 	content.add_child(info_price)
+	UITheme.passthrough(info_panel)
+
+
+func layout_info_panel(hud_rect: Rect2) -> void:
+	if info_panel == null:
+		return
+	var safe := UITheme.safe_rect(get_viewport())
+	var width := minf(420.0, safe.size.x - 32.0)
+	info_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	info_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	info_panel.size = Vector2(width, maxf(100.0, info_panel.get_combined_minimum_size().y))
+	info_panel.position = Vector2(safe.get_center().x - width * 0.5, hud_rect.position.y - info_panel.size.y - 12.0)
 
 
 func refresh_hire_prices(state: Node) -> void:

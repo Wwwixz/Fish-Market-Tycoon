@@ -1,6 +1,13 @@
 
 # Godot generated files
 .godot/
+.android/
+builds/
+test-artifacts/
+android/.gradle/
+android/build/
+export_credentials.cfg
+*.translation
 
 # Temporary files
 *.tmp

@@ -34,6 +34,7 @@ func setup(game_state: Node, game_player: Node3D) -> void:
 func _ready() -> void:
 	for i in range(4):
 		_build_pad(i)
+		inside[i] = Vector2(player.position.x - S.UPGRADE_POSITIONS[i].x, player.position.z - S.UPGRADE_POSITIONS[i].z).length() < ACTIVATION_RADIUS
 
 	if state != null:
 		state.changed.connect(refresh)
@@ -287,6 +288,8 @@ func _show_shared_info(role: int) -> void:
 func _process(delta: float) -> void:
 	if state == null or not is_instance_valid(player):
 		return
+	if state.controls_blocked:
+		return
 
 	_find_world()
 
@@ -341,6 +344,9 @@ func _process(delta: float) -> void:
 
 
 func _try_purchase(role: int) -> void:
+	if state.upgrade_levels[role] >= S.MAX_UPGRADE_LEVEL:
+		state.notice.emit("Достигнут максимальный уровень улучшения")
+		return
 	if state.upgrade(role):
 		return
 

@@ -1,7 +1,9 @@
 
 extends Control
 
-const BASE_COLOR := Color("#203941")
+signal direction_changed(value: Vector2)
+
+const BASE_COLOR := Color("#203941", 0.78)
 const RING_COLOR := Color("#8BC9B4")
 const KNOB_COLOR := Color("#A7D8C7")
 
@@ -14,12 +16,13 @@ var knob_offset: Vector2 = Vector2.ZERO
 
 var touch_id: int = -1
 var mouse_active: bool = false
+var enabled: bool = true
 
 
 func _ready() -> void:
 	add_to_group("movement_joystick")
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	custom_minimum_size = Vector2(170, 170)
+	custom_minimum_size = Vector2(96, 96)
 	hide()
 
 
@@ -57,10 +60,12 @@ func _draw() -> void:
 
 # Start after GUI controls have had a chance to handle the press.
 func _unhandled_input(event: InputEvent) -> void:
-	if touch_id != -1 or mouse_active:
+	if not enabled or touch_id != -1 or mouse_active:
+		return
+	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
 		return
 
-	if event is InputEventScreenTouch and event.pressed:
+	if event is InputEventScreenTouch and event.pressed and not event.canceled:
 		touch_id = event.index
 		_begin(event)
 	elif event is InputEventMouseButton:
@@ -101,7 +106,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED]:
 		release()
 
 
@@ -140,12 +145,14 @@ func _update_direction(
 		)
 
 	queue_redraw()
+	direction_changed.emit(direction)
 
 
 func _reset() -> void:
 	direction = Vector2.ZERO
 	knob_offset = Vector2.ZERO
 	queue_redraw()
+	direction_changed.emit(direction)
 
 
 func get_direction() -> Vector2:
@@ -157,3 +164,9 @@ func release() -> void:
 	mouse_active = false
 	_reset()
 	hide()
+
+
+func set_enabled(value: bool) -> void:
+	enabled = value
+	if not enabled:
+		release()

@@ -4,6 +4,21 @@ const TEXT := Color("#F2EDE2")
 const MUTED := Color("#A7BCBD")
 const ACCENT := Color("#8BC9B4")
 
+const TOUCH_SIZE := 64.0
+const EDGE_MARGIN := 16.0
+
+
+static func safe_rect(viewport: Viewport) -> Rect2:
+	var screen := viewport.get_visible_rect()
+	if not OS.has_feature("android"):
+		return screen
+	var physical_safe := Rect2(DisplayServer.get_display_safe_area())
+	if not physical_safe.has_area():
+		return screen
+	var local_safe: Rect2 = viewport.get_screen_transform().affine_inverse() * physical_safe
+	var usable := screen.intersection(local_safe)
+	return usable if usable.has_area() else screen
+
 static func panel(color: Color, radius: int = 14, padding: int = 14) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = color

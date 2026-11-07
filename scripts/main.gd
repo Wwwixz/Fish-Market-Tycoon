@@ -25,6 +25,8 @@ const QuestUI = preload("res://scripts/quest_ui.gd")
 const DailyManager = preload("res://scripts/daily_manager.gd")
 const MobileControls = preload("res://scripts/mobile_controls.gd")
 
+@export var save_path: String = SaveManager.SAVE_PATH
+
 var state: Node
 var world: Node3D
 var player: Node3D
@@ -51,6 +53,7 @@ var mobile_controls: CanvasLayer
 
 
 func _ready() -> void:
+	get_tree().quit_on_go_back = false
 	state = State.new()
 	state.name = "GameState"
 	add_child(state)
@@ -100,6 +103,7 @@ func _ready() -> void:
 	add_child(daily_manager)
 
 	save_manager = SaveManager.new()
+	save_manager.save_path = save_path
 	save_manager.name = "SaveManager"
 	save_manager.call("setup", state, player, workers)
 	save_manager.set("progression", progression)
@@ -110,11 +114,11 @@ func _ready() -> void:
 	var loaded_data: Dictionary = save_manager.call("load_game")
 
 	if not loaded_data.is_empty():
-		_restore_worker_models()
-
+		player.prime_hire_zones()
 		if player.has_method("_update_camera"):
 			player.call("_update_camera", 1.0, true)
 
+	quest_manager.call("finish_loading")
 	daily_manager.call("finish_loading")
 
 	boats = Boats.new()
@@ -175,44 +179,58 @@ func _ready() -> void:
 		daily_manager
 	)
 	add_child(quest_ui)
-	ui.modal_opened.connect(quest_ui._close)
-	quest_ui.modal_opened.connect(ui._close_menu)
+	ui.bottom_panel.resized.connect(_position_context_info)
+	get_viewport().size_changed.connect(_position_context_info)
+	_position_context_info.call_deferred()
+	ui.modal_opened.connect(_open_game_window.bind(ui))
+	quest_ui.modal_opened.connect(_open_game_window.bind(quest_ui))
+	ui.modal_closed.connect(_sync_controls)
+	quest_ui.modal_closed.connect(_sync_controls)
+	save_manager.save_failed.connect(ui._notice)
 
 	state.reward.connect(_reward)
 	state.changed.connect(_refresh)
 
-	save_manager.ready_to_save = true
+	save_manager.start_saving()
+	if not save_manager.last_error.is_empty():
+		ui._notice(save_manager.last_error)
+	elif not save_manager.recovery_notice.is_empty():
+		ui._notice(save_manager.recovery_notice)
 	_refresh()
+	print("Fish Market Tycoon: ready")
 
 
-func _restore_worker_models() -> void:
-	var saved_hired: Array[int] = []
-	var saved_prices: Array[int] = []
+func _open_game_window(active_window: CanvasLayer) -> void:
+	if active_window != ui:
+		ui._close_menu()
+	if active_window != quest_ui:
+		quest_ui._close()
+	state.controls_blocked = true
+	mobile_controls.set_enabled(false)
+	player.velocity = Vector3.ZERO
+	player.mobile_input = Vector2.ZERO
+	world.info_panel.hide()
 
-	for value in state.hired:
-		saved_hired.append(int(value))
 
-	for value in state.prices:
-		saved_prices.append(int(value))
+func _position_context_info() -> void:
+	if is_instance_valid(ui) and is_instance_valid(world):
+		world.layout_info_panel(ui.bottom_panel.get_global_rect())
 
-	var saved_coins: int = state.coins
-	var default_prices: Array[int] = [30, 50, 70, 100]
 
-	for role in range(4):
-		state.hired[role] = 0
-		state.prices[role] = default_prices[role]
+func _sync_controls() -> void:
+	state.controls_blocked = ui.overlay.visible or quest_ui.overlay.visible
+	mobile_controls.set_enabled(not state.controls_blocked)
 
-	state.coins = 1000000000
 
-	for role in range(4):
-		for i in range(saved_hired[role]):
-			workers.call("hire", role)
-
-	for role in range(4):
-		state.hired[role] = saved_hired[role]
-		state.prices[role] = saved_prices[role]
-
-	state.coins = saved_coins
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_instance_valid(quest_ui):
+		if quest_ui.overlay.visible:
+			quest_ui._close()
+		elif ui.overlay.visible:
+			ui._close_menu()
+		else:
+			save_manager.save_game()
+			get_tree().quit()
 
 
 func _reward(

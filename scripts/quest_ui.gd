@@ -2,6 +2,7 @@
 extends CanvasLayer
 
 signal modal_opened
+signal modal_closed
 
 const UITheme = preload("res://scripts/ui_theme.gd")
 
@@ -161,7 +162,7 @@ func _build_window() -> void:
 
 	var close := Button.new()
 	close.text = "✕"
-	close.custom_minimum_size = Vector2(48, 48)
+	close.custom_minimum_size = Vector2(UITheme.TOUCH_SIZE, UITheme.TOUCH_SIZE)
 	close.add_theme_stylebox_override(
 		"normal", _style(CARD)
 	)
@@ -192,7 +193,7 @@ func _build_window() -> void:
 		var button := Button.new()
 		button.text = names[i]
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 48
+		button.custom_minimum_size.y = 56
 		button.clip_text = true
 		button.add_theme_font_size_override(
 			"font_size", 16
@@ -228,21 +229,26 @@ func _resize() -> void:
 	var screen: Vector2 = (
 		get_viewport().get_visible_rect().size
 	)
+	var safe := UITheme.safe_rect(get_viewport())
+	open_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	open_button.position = Vector2(safe.end.x - 128.0, safe.position.y + 92.0)
+	open_button.size = Vector2(112.0, UITheme.TOUCH_SIZE)
 
 	var width: float = minf(
 		540.0,
-		maxf(220.0, screen.x - 32.0)
+		maxf(220.0, safe.size.x - 32.0)
 	)
 
 	var height: float = minf(
-		760.0,
-		maxf(220.0, screen.y - 40.0)
+		820.0,
+		maxf(220.0, safe.size.y - 40.0)
 	)
 
-	window.offset_left = -width / 2.0
-	window.offset_right = width / 2.0
-	window.offset_top = -height / 2.0
-	window.offset_bottom = height / 2.0
+	var center_offset: Vector2 = safe.get_center() - screen * 0.5
+	window.offset_left = center_offset.x - width / 2.0
+	window.offset_right = center_offset.x + width / 2.0
+	window.offset_top = center_offset.y - height / 2.0
+	window.offset_bottom = center_offset.y + height / 2.0
 	for i in range(tab_buttons.size()):
 		tab_buttons[i].text = ["Цели", "На день", "Награды"][i] if screen.x < 440.0 else ["Основные", "Ежедневные", "Достижения"][i]
 		tab_buttons[i].add_theme_font_size_override("font_size", 14 if screen.x < 440.0 else 16)
@@ -258,9 +264,12 @@ func _open() -> void:
 
 
 func _close() -> void:
+	var was_open: bool = overlay.visible
 	layer = 20
 	overlay.visible = false
 	open_button.visible = true
+	if was_open:
+		modal_closed.emit()
 
 
 func _select_tab(index: int) -> void:
