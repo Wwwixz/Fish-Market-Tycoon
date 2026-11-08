@@ -6,13 +6,13 @@ signal modal_closed
 
 const UITheme = preload("res://scripts/ui_theme.gd")
 
-const BG := Color("#172B32")
-const PANEL := Color("#203941")
-const CARD := Color("#2A4850")
-const TEXT := Color("#F2EDE2")
-const MUTED := Color("#A7BCBD")
-const ACCENT := Color("#8BC9B4")
-const GOLD := Color("#E4BE79")
+const BG := UITheme.BG
+const PANEL := UITheme.PANEL
+const CARD := UITheme.CARD
+const TEXT := UITheme.TEXT
+const MUTED := UITheme.MUTED
+const ACCENT := UITheme.ACCENT
+const GOLD := UITheme.GOLD
 
 var quest_manager: Node
 var daily_manager: Node
@@ -24,6 +24,7 @@ var cards: VBoxContainer
 var tab_buttons: Array[Button] = []
 
 var active_tab: int = 0
+var quest_scroll: ScrollContainer
 
 
 func setup(
@@ -49,6 +50,8 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_resize)
 
 	_resize()
+	UITheme.feedback_tree(overlay)
+	UITheme.button_feedback(open_button)
 	refresh()
 
 
@@ -56,11 +59,7 @@ func _style(
 	color: Color,
 	radius: int = 12
 ) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = color
-	style.set_corner_radius_all(radius)
-	style.set_content_margin_all(0 if radius <= 6 else 14)
-	return style
+	return UITheme.panel(color, radius, 0 if radius <= 6 else 14)
 
 
 func _label(
@@ -88,6 +87,8 @@ func _build_button() -> void:
 	open_button.theme = UITheme.create()
 	open_button.theme_type_variation = "PrimaryButton"
 	open_button.text = "Задания"
+	open_button.icon = UITheme.navigation_icon(1)
+	open_button.tooltip_text = "Цели, ежедневные задания и достижения"
 
 	open_button.anchor_left = 1.0
 	open_button.anchor_right = 1.0
@@ -126,7 +127,7 @@ func _build_window() -> void:
 	add_child(overlay)
 
 	var shade := ColorRect.new()
-	shade.color = Color(0.02, 0.06, 0.08, 0.88)
+	shade.color = Color(0.02, 0.06, 0.08, 0.72)
 	shade.set_anchors_and_offsets_preset(
 		Control.PRESET_FULL_RECT
 	)
@@ -155,13 +156,14 @@ func _build_window() -> void:
 
 	var title := _label(
 		header,
-		"ЗАДАНИЯ",
+		"Задания",
 		23
 	)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var close := Button.new()
 	close.text = "✕"
+	close.tooltip_text = "Закрыть"
 	close.custom_minimum_size = Vector2(UITheme.TOUCH_SIZE, UITheme.TOUCH_SIZE)
 	close.add_theme_stylebox_override(
 		"normal", _style(CARD)
@@ -171,7 +173,7 @@ func _build_window() -> void:
 
 	var subtitle := _label(
 		layout,
-		"Развивай бизнес и получай награды",
+		"Награды начисляются автоматически",
 		13,
 		MUTED
 	)
@@ -193,7 +195,7 @@ func _build_window() -> void:
 		var button := Button.new()
 		button.text = names[i]
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 56
+		button.custom_minimum_size.y = UITheme.TOUCH_SIZE
 		button.clip_text = true
 		button.add_theme_font_size_override(
 			"font_size", 16
@@ -206,6 +208,7 @@ func _build_window() -> void:
 		tab_buttons.append(button)
 
 	var scroll := ScrollContainer.new()
+	quest_scroll = scroll
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = (
 		ScrollContainer.SCROLL_MODE_DISABLED
@@ -218,6 +221,7 @@ func _build_window() -> void:
 		"separation", 10
 	)
 	scroll.add_child(cards)
+	layout.move_child(tabs, -1)
 
 	overlay.visible = false
 
@@ -231,8 +235,9 @@ func _resize() -> void:
 	)
 	var safe := UITheme.safe_rect(get_viewport())
 	open_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	open_button.position = Vector2(safe.end.x - 128.0, safe.position.y + 92.0)
-	open_button.size = Vector2(112.0, UITheme.TOUCH_SIZE)
+	var nav_rect := UITheme.navigation_rect(get_viewport(), 1)
+	open_button.position = nav_rect.position
+	open_button.size = nav_rect.size
 
 	var width: float = minf(
 		540.0,
@@ -250,7 +255,7 @@ func _resize() -> void:
 	window.offset_top = center_offset.y - height / 2.0
 	window.offset_bottom = center_offset.y + height / 2.0
 	for i in range(tab_buttons.size()):
-		tab_buttons[i].text = ["Цели", "На день", "Награды"][i] if screen.x < 440.0 else ["Основные", "Ежедневные", "Достижения"][i]
+		tab_buttons[i].text = ["Цели", "На день", "Успехи"][i] if screen.x < 440.0 else ["Основные", "Ежедневные", "Достижения"][i]
 		tab_buttons[i].add_theme_font_size_override("font_size", 14 if screen.x < 440.0 else 16)
 
 
@@ -258,8 +263,9 @@ func _open() -> void:
 	modal_opened.emit()
 	get_tree().call_group("movement_joystick", "release")
 	layer = 30
-	refresh()
 	overlay.visible = true
+	refresh()
+	UITheme.reveal(window)
 	open_button.visible = false
 
 
@@ -274,48 +280,21 @@ func _close() -> void:
 
 func _select_tab(index: int) -> void:
 	active_tab = index
+	quest_scroll.scroll_vertical = 0
 	refresh()
 
 
 func _update_tabs() -> void:
 	for i in range(tab_buttons.size()):
-		var button: Button = tab_buttons[i]
-		var selected: bool = i == active_tab
-
-		var color: Color = (
-			ACCENT if selected else CARD
-		)
-
-		var font_color: Color = (
-			BG if selected else TEXT
-		)
-
-		button.add_theme_stylebox_override(
-			"normal", _style(color, 9)
-		)
-		button.add_theme_stylebox_override(
-			"hover", _style(color.lightened(0.08), 9)
-		)
-		button.add_theme_stylebox_override(
-			"pressed", _style(color.darkened(0.08), 9)
-		)
-
-		button.add_theme_color_override(
-			"font_color", font_color
-		)
-		button.add_theme_color_override(
-			"font_hover_color", font_color
-		)
-		button.add_theme_color_override(
-			"font_pressed_color", font_color
-		)
+		UITheme.select_tab(tab_buttons[i], i == active_tab)
 
 
 func refresh() -> void:
-	if cards == null:
+	if cards == null or not overlay.visible:
 		return
 
 	_update_tabs()
+	var scroll_position := quest_scroll.scroll_vertical
 
 	for child in cards.get_children():
 		cards.remove_child(child)
@@ -328,6 +307,7 @@ func refresh() -> void:
 			_show_daily_quests()
 		2:
 			_show_achievements()
+	quest_scroll.set_deferred("scroll_vertical", scroll_position)
 
 
 func _show_main_quests() -> void:
@@ -446,9 +426,9 @@ func _make_card(
 	stack.add_child(footer)
 
 	var progress_text: String = (
-		"ВЫПОЛНЕНО ✓"
+		"Готово ✓"
 		if done
-		else "%d / %d" % [current, target]
+		else "%d / %d" % [mini(current, target), target]
 	)
 
 	var counter := _label(
@@ -460,7 +440,7 @@ func _make_card(
 	counter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var reward_text: String = (
-		"ПОЛУЧЕНО"
+		"Получено"
 		if done
 		else "+%d монет" % reward_amount
 	)

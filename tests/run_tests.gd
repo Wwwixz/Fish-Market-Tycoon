@@ -702,12 +702,49 @@ func test_input_and_windows() -> void:
 			scene.ui._select_menu(tab)
 			await settle()
 			check(scene.ui.menu_window.get_global_rect().end.x <= viewport_size.x and scene.ui.menu_window.get_global_rect().end.y <= viewport_size.y, "all menu tabs including development fit viewport")
+			if tab == 1:
+				var resource_row = scene.ui.menu_content.get_child(0).get_child(0).get_child(1)
+				check(resource_row.get_child(1).size.x >= 8.0, "resource counter remains visible at %s" % viewport_size)
+			if tab == 3:
+				for section in range(4):
+					scene.ui._select_development(section)
+					await settle()
+					check(Rect2(Vector2.ZERO, Vector2(viewport_size)).encloses(scene.ui.menu_window.get_global_rect()), "development section %d fits %s" % [section, viewport_size])
 			scene.quest_ui._open()
 			scene.quest_ui._select_tab(tab % 3)
 			await settle()
 			check(scene.quest_ui.window.get_global_rect().end.x <= viewport_size.x, "quest tabs fit viewport width")
 			check(scene.quest_ui.window.get_global_rect().end.y <= viewport_size.y, "quest tabs fit viewport height")
 			scene.quest_ui._close()
+	scene.ui._open_menu()
+	scene.state.coins = 1000
+	scene.ui._select_menu(3)
+	scene.ui._select_development(2)
+	var upgrade_level: int = scene.state.upgrade_levels[0]
+	var upgrade_price: int = scene.state.upgrade_prices[0]
+	for button in scene.ui.menu_content.find_children("*", "Button", true, false):
+		if button.text.begins_with("Купить") and not button.disabled:
+			button.pressed.emit()
+			break
+	check(scene.state.upgrade_levels[0] == upgrade_level + 1 and scene.state.coins == 1000 - upgrade_price, "upgrade card uses existing purchase and charges once")
+	var coins_before: int = scene.state.coins
+	var expansion_level: int = scene.state.expansion_levels[0]
+	var expansion_price: int = scene.state.expansion_prices[0]
+	scene.ui._upgrade(0, true)
+	check(scene.state.expansion_levels[0] == expansion_level + 1 and scene.state.coins == coins_before - expansion_price, "expansion shortcut uses existing purchase")
+	scene.ui._select_menu(1)
+	scene.ui._open_species()
+	check(scene.ui.menu_tab == 3 and scene.ui.development_tab == 1, "inventory shortcut opens special fish stocks")
+	var section_selector = scene.ui.menu_content.get_child(0)
+	section_selector.show_popup()
+	await settle()
+	check(section_selector.get_popup().visible and scene.ui._menu_interacting(), "development dropdown stays interactive")
+	scene.state.coins += 1
+	scene.ui._queue_development_refresh()
+	await settle()
+	check(is_instance_valid(section_selector) and section_selector.get_popup().visible, "income does not interrupt an open section selector")
+	scene.ui._close_menu()
+	check(not section_selector.get_popup().visible, "closing business also closes its section selector")
 	check(not scene.state.controls_blocked, "repeated window switches leave controls enabled")
 
 

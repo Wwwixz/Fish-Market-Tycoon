@@ -47,7 +47,7 @@ func _pier(pos: Vector3, title: String, color: Color) -> Label3D:
 
 func _refresh() -> void:
 	market_root.visible = harbor.zone_open
-	market_label.text = "ГАСТРОНОМИЧЕСКИЙ РЫНОК" if harbor.zone_open else "НОВЫЙ РЫНОК: ур. 3 · 600 монет\nКоманда → Развитие"
+	market_label.text = "ГАСТРОНОМИЧЕСКИЙ РЫНОК" if harbor.zone_open else "НОВЫЙ РЫНОК: ур. 3 · 600 монет\nБизнес → Развитие"
 
 
 func _process(delta: float) -> void:
@@ -83,7 +83,7 @@ func _fish(delta: float) -> void:
 	var index: int = harbor.selected_species
 	var label := river_label if spot == 0 else reef_label
 	if not harbor.can_catch(index):
-		label.text = "Нужна спортивная удочка и уровень %d\nКоманда → Развитие" % Harbor.SPECIES[index]["level"]
+		label.text = "Нужна спортивная удочка и уровень %d\nБизнес → Развитие" % Harbor.SPECIES[index]["level"]
 		catch_timer = 0.0
 		return
 	if (index == 2) != (spot == 1):

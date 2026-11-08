@@ -5,16 +5,17 @@ signal modal_opened
 signal modal_closed
 
 const UITheme = preload("res://scripts/ui_theme.gd")
+const S = preload("res://scripts/game_state.gd")
 const Harbor = preload("res://scripts/harbor_manager.gd")
 
-const BG := Color("#172B32")
-const PANEL := Color("#203941")
-const CARD := Color("#2A4850")
-const TEXT := Color("#F2EDE2")
-const MUTED := Color("#A7BCBD")
-const ACCENT := Color("#8BC9B4")
-const GOLD := Color("#E4BE79")
-const WARNING := Color("#D98E78")
+const BG := UITheme.BG
+const PANEL := UITheme.PANEL
+const CARD := UITheme.CARD
+const TEXT := UITheme.TEXT
+const MUTED := UITheme.MUTED
+const ACCENT := UITheme.ACCENT
+const GOLD := UITheme.GOLD
+const WARNING := UITheme.WARNING
 
 const WORKER_NAMES := [
 	"Рыбак",
@@ -51,6 +52,9 @@ var menu_window: PanelContainer
 var menu_content: VBoxContainer
 var menu_title: Label
 var menu_tab: int = 0
+var development_tab := 0
+var menu_scroll: ScrollContainer
+var _menu_signature := ""
 
 var notice_time: float = 0.0
 var update_time: float = 0.0
@@ -74,10 +78,7 @@ func _style(color: Color, radius: int = 14) -> StyleBoxFlat:
 		return _style_cache[key]
 	if _style_cache.size() >= 128:
 		_style_cache.clear()
-	var s := StyleBoxFlat.new()
-	s.bg_color = color
-	s.set_corner_radius_all(radius)
-	s.set_content_margin_all(0 if radius <= 6 else 14)
+	var s := UITheme.panel(color, radius, 0 if radius <= 6 else 14)
 	_style_cache[key] = s
 	return s
 
@@ -120,6 +121,7 @@ func _ready() -> void:
 	_build_top()
 	_build_boat()
 	_build_bottom()
+	bottom_panel.resized.connect(_position_bottom)
 	_build_menu_button()
 	_build_menu()
 	for panel in [top_panel, boat_panel, bottom_panel]:
@@ -134,6 +136,7 @@ func _ready() -> void:
 	if progression != null:
 		progression.level_up.connect(_queue_development_refresh)
 
+	UITheme.feedback_tree(root)
 	refresh()
 
 
@@ -149,13 +152,13 @@ func _build_top() -> void:
 	var row := HBoxContainer.new()
 	stack.add_child(row)
 
-	money = _label(row, "0 монет", 26, GOLD)
+	money = _label(row, "0 монет", 24, GOLD)
 	money.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	money.clip_text = true
 
 	xp_label = _label(row, "Уровень 1", 13, MUTED)
 	xp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	xp_label.custom_minimum_size.x = 58
+	xp_label.custom_minimum_size.x = 148
 
 	xp_progress = ProgressBar.new()
 	xp_progress.custom_minimum_size.y = 7
@@ -188,7 +191,7 @@ func _build_boat() -> void:
 	boat_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	boat_info.max_lines_visible = 2
 	boat_info.clip_text = false
-	boat_info.custom_minimum_size.y = 40
+	boat_info.custom_minimum_size.y = 0
 
 	boat_progress = ProgressBar.new()
 	boat_progress.custom_minimum_size.y = 8
@@ -211,24 +214,30 @@ func _build_bottom() -> void:
 	)
 	root.add_child(bottom_panel)
 
-	var stack := _stack(bottom_panel, 8)
+	var stack := _stack(bottom_panel, 6)
 	inventory = _label(stack, "", 17, GOLD)
 	inventory.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	inventory.autowrap_mode = TextServer.AUTOWRAP_OFF
-	inventory.clip_text = true
+	inventory.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inventory.max_lines_visible = 2
 
 	task = _label(stack, "Цель: ловить рыбу", 13)
 	task.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	task.max_lines_visible = 2
 
-	message = _label(stack, "", 12, ACCENT)
+	# Notices float above the HUD and remain visible over management windows.
+	message = _label(root, "", 16, ACCENT)
+	message.add_theme_stylebox_override("normal", UITheme.panel(BG, 12, 12))
 	message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	message.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
 
 
 func _build_menu_button() -> void:
 	menu_button = Button.new()
 	menu_button.theme_type_variation = "PrimaryButton"
-	menu_button.text = "Команда"
+	menu_button.text = "Бизнес"
+	menu_button.icon = UITheme.navigation_icon(0)
+	menu_button.tooltip_text = "Команда, ресурсы и развитие производства"
 	menu_button.add_theme_font_size_override("font_size", 17)
 	menu_button.add_theme_color_override("font_color", BG)
 	menu_button.add_theme_stylebox_override(
@@ -247,7 +256,7 @@ func _build_menu() -> void:
 	root.add_child(overlay)
 
 	var shade := ColorRect.new()
-	shade.color = Color(0.02, 0.06, 0.08, 0.88)
+	shade.color = Color(0.02, 0.06, 0.08, 0.72)
 	shade.set_anchors_and_offsets_preset(
 		Control.PRESET_FULL_RECT
 	)
@@ -274,18 +283,20 @@ func _build_menu() -> void:
 
 	var close := Button.new()
 	close.text = "✕"
+	close.tooltip_text = "Закрыть"
 	close.custom_minimum_size = Vector2(UITheme.TOUCH_SIZE, UITheme.TOUCH_SIZE)
 	close.pressed.connect(_close_menu)
 	header.add_child(close)
 
-	var tabs := HBoxContainer.new()
+	var tabs := GridContainer.new()
+	tabs.columns = 2
 	layout.add_child(tabs)
 
 	for i in range(4):
 		var b := Button.new()
 		b.text = ["Команда", "Ресурсы", "Статистика", "Развитие"][i]
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.custom_minimum_size.y = 56
+		b.custom_minimum_size.y = UITheme.TOUCH_SIZE
 		b.add_theme_font_size_override("font_size", 16)
 		b.clip_text = true
 		menu_tabs.append(b)
@@ -293,6 +304,7 @@ func _build_menu() -> void:
 		tabs.add_child(b)
 
 	var scroll := ScrollContainer.new()
+	menu_scroll = scroll
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = (
 		ScrollContainer.SCROLL_MODE_DISABLED
@@ -303,6 +315,7 @@ func _build_menu() -> void:
 	menu_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	menu_content.add_theme_constant_override("separation", 9)
 	scroll.add_child(menu_content)
+	layout.move_child(tabs, -1)
 
 	overlay.visible = false
 
@@ -311,24 +324,22 @@ func _resize() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	var safe := UITheme.safe_rect(get_viewport())
 	var margin: float = 16.0
-	var actions_width: float = 112.0
-	var panel_width: float = minf(370.0, safe.size.x - margin * 3.0 - actions_width)
-	money.add_theme_font_size_override("font_size", 20 if screen.x < 500.0 else 26)
-
-	top_panel.position = safe.position + Vector2(margin, margin)
-	top_panel.size = Vector2(panel_width, 80)
-	boat_panel.position = safe.position + Vector2(margin, 108)
-	boat_panel.size = Vector2(panel_width, 100)
-	menu_button.position = Vector2(safe.end.x - margin - actions_width, safe.position.y + margin)
-	menu_button.size = Vector2(actions_width, UITheme.TOUCH_SIZE)
+	var panel_width: float = minf(560.0, safe.size.x - margin * 2.0)
+	money.add_theme_font_size_override("font_size", 22 if screen.x < 440.0 else 26)
+	top_panel.position = safe.position + Vector2((safe.size.x - panel_width) * 0.5, margin)
+	top_panel.size = Vector2(panel_width, 76)
+	boat_panel.position = top_panel.position + Vector2(0, 88)
+	boat_panel.size = Vector2(minf(panel_width - UITheme.TOUCH_SIZE - 12.0, 340.0), 96)
+	var nav_rect := UITheme.navigation_rect(get_viewport(), 0)
+	menu_button.position = nav_rect.position
+	menu_button.size = nav_rect.size
 
 	var bottom_width: float = minf(safe.size.x - margin * 2.0, 560.0)
-	bottom_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	bottom_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	bottom_panel.offset_left = safe.position.x + (safe.size.x - bottom_width) * 0.5
-	bottom_panel.offset_right = bottom_panel.offset_left + bottom_width - screen.x
-	bottom_panel.offset_top = safe.end.y - screen.y - 112.0
-	bottom_panel.offset_bottom = safe.end.y - screen.y - margin
+	bottom_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	bottom_panel.size = Vector2(bottom_width, 0)
+	_position_bottom()
+	message.position = Vector2(safe.get_center().x - bottom_width * 0.5, safe.position.y + 200.0)
+	message.size = Vector2(bottom_width, 0)
 
 	var window_width: float = minf(540.0, safe.size.x - 32.0)
 	var window_height: float = minf(820.0, safe.size.y - 40.0)
@@ -338,8 +349,14 @@ func _resize() -> void:
 	menu_window.offset_top = center_offset.y - window_height / 2.0
 	menu_window.offset_bottom = center_offset.y + window_height / 2.0
 	for i in range(menu_tabs.size()):
-		menu_tabs[i].text = ["Люди", "Запасы", "Итоги", "Рост"][i] if screen.x < 440.0 else ["Команда", "Ресурсы", "Статистика", "Развитие"][i]
-		menu_tabs[i].add_theme_font_size_override("font_size", 14 if screen.x < 440.0 else 16)
+		menu_tabs[i].text = ["Команда", "Ресурсы", "Статистика", "Развитие"][i]
+
+
+
+func _position_bottom() -> void:
+	var nav_rect := UITheme.navigation_rect(get_viewport(), 0)
+	var safe := UITheme.safe_rect(get_viewport())
+	bottom_panel.position = Vector2(safe.get_center().x - bottom_panel.size.x * 0.5, nav_rect.position.y - bottom_panel.size.y - 12.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -352,14 +369,16 @@ func _open_menu() -> void:
 	modal_opened.emit()
 	get_tree().call_group("movement_joystick", "release")
 	layer = 30
-	menu_tab = 0
 	overlay.visible = true
 	menu_button.visible = false
 	_rebuild_menu()
+	UITheme.reveal(menu_window)
 
 
 func _close_menu() -> void:
 	var was_open: bool = overlay.visible
+	for popup in menu_content.find_children("*", "PopupMenu", true, false):
+		popup.hide()
 	layer = 20
 	overlay.visible = false
 	menu_button.visible = true
@@ -369,6 +388,7 @@ func _close_menu() -> void:
 
 func _select_menu(index: int) -> void:
 	menu_tab = index
+	menu_scroll.scroll_vertical = 0
 	_rebuild_menu()
 
 
@@ -382,11 +402,11 @@ func _rebuild_menu() -> void:
 	if menu_content == null or state == null:
 		return
 
+	var scroll_position := menu_scroll.scroll_vertical
 	_clear_menu()
+	menu_title.text = ["Команда", "Ресурсы", "Статистика", "Развитие"][menu_tab]
 	for i in range(menu_tabs.size()):
-		var selected: bool = i == menu_tab
-		menu_tabs[i].add_theme_stylebox_override("normal", _style(ACCENT if selected else CARD, 10))
-		menu_tabs[i].add_theme_color_override("font_color", BG if selected else TEXT)
+		UITheme.select_tab(menu_tabs[i], i == menu_tab)
 
 	match menu_tab:
 		0:
@@ -397,6 +417,9 @@ func _rebuild_menu() -> void:
 			_build_stats_content()
 		3:
 			_build_development_content()
+	UITheme.feedback_tree(menu_content)
+	_menu_signature = _current_menu_signature()
+	menu_scroll.set_deferred("scroll_vertical", scroll_position)
 
 
 func _queue_development_refresh(_value: Variant = null) -> void:
@@ -407,53 +430,162 @@ func _queue_development_refresh(_value: Variant = null) -> void:
 
 func _refresh_development() -> void:
 	_development_refresh_pending = false
-	if overlay.visible and menu_tab == 3:
+	if overlay.visible and menu_tab == 3 and not _menu_interacting():
 		_rebuild_menu()
 
 
-func _development_button(text: String, action: Callable, disabled: bool = false) -> void:
+func _menu_interacting() -> bool:
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		return true
+	for popup in menu_content.find_children("*", "PopupMenu", true, false):
+		if popup.visible:
+			return true
+	return false
+
+
+func _development_button(text: String, action: Callable, disabled: bool = false, parent: Node = null) -> void:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size.y = UITheme.TOUCH_SIZE
-	button.add_theme_font_size_override("font_size", 16)
 	button.clip_text = true
 	button.disabled = disabled
 	button.pressed.connect(action)
-	menu_content.add_child(button)
+	(menu_content if parent == null else parent).add_child(button)
+
+
+func _card(title: String, detail: String = "") -> VBoxContainer:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _style(CARD))
+	menu_content.add_child(panel)
+	var stack := _stack(panel)
+	_label(stack, title, 18)
+	if not detail.is_empty():
+		_label(stack, detail, 16, MUTED)
+	return stack
+
+
+func _purchase_text(price: int, level: int = 1, owned: bool = false) -> String:
+	if owned:
+		return "Куплено ✓"
+	if state.harbor.level() < level:
+		return "Откроется на уровне %d" % level
+	if state.coins < price:
+		return "Не хватает %s монет" % UITheme.number(price - state.coins)
+	return "Купить · %s монет" % UITheme.number(price)
+
+
+func _select_development(index: int) -> void:
+	development_tab = index
+	menu_scroll.scroll_vertical = 0
+	_rebuild_menu()
 
 
 func _build_development_content() -> void:
+	var categories := OptionButton.new()
+	categories.custom_minimum_size.y = UITheme.TOUCH_SIZE
+	categories.tooltip_text = "Раздел развития"
+	categories.clip_text = true
+	menu_content.add_child(categories)
+	for i in range(4):
+		categories.add_item(["Оборудование", "Виды рыбы", "Улучшения", "Цели промысла"][i])
+	categories.selected = development_tab
+	categories.item_selected.connect(_select_development)
+	match development_tab:
+		0: _equipment_content()
+		1: _species_content()
+		2: _upgrades_content()
+		3: _harbor_goals_content()
+
+
+func _equipment_content() -> void:
 	var harbor: Node = state.harbor
-	_label(menu_content, "НОВЫЙ ПРОМЫСЕЛ · уровень %d" % harbor.level(), 20, GOLD)
-	_label(menu_content, "Окунь и лосось: речной причал слева. Тунец: морской причал справа внизу. Ловля начинается у цветного круга.", 16, MUTED)
-	_label(menu_content, harbor.next_goal(), 18, ACCENT)
 	for i in range(Harbor.EQUIPMENT.size()):
 		var item: Dictionary = Harbor.EQUIPMENT[i]
-		_label(menu_content, "%s · ур. %d · %d монет\n%s" % [item["name"], item["level"], item["price"], item["hint"]], 16)
-		_development_button("Куплено" if harbor.equipment[i] else "Купить · %d монет" % item["price"], harbor.buy_equipment.bind(i),
-			harbor.equipment[i] or harbor.level() < int(item["level"]) or state.coins < int(item["price"]))
-	_label(menu_content, "ГАСТРОНОМИЧЕСКИЙ РЫНОК · ур. 3 · 600 монет\nСлева внизу острова. Заказы выполняет продавец или игрок у прилавка.", 16, GOLD)
-	_development_button("Рынок открыт" if harbor.zone_open else "Открыть рынок", harbor.open_market,
-		harbor.zone_open or harbor.level() < Harbor.ZONE_LEVEL or state.coins < Harbor.ZONE_PRICE)
-	_label(menu_content, "ВЫБОР РЫБЫ И ЗАПАСЫ", 18, GOLD)
+		var stack := _card(item["name"], item["hint"])
+		_label(stack, "Уровень %d · %d монет" % [item["level"], item["price"]], 16, GOLD)
+		_development_button(_purchase_text(item["price"], item["level"], harbor.equipment[i]), harbor.buy_equipment.bind(i),
+			harbor.equipment[i] or harbor.level() < int(item["level"]) or state.coins < int(item["price"]), stack)
+	var market := _card("Гастрономический рынок", "Слева внизу острова. Подойди к прилавку или найми продавца для особых заказов.")
+	_label(market, "Уровень 3 · 600 монет", 16, GOLD)
+	_development_button(_purchase_text(Harbor.ZONE_PRICE, Harbor.ZONE_LEVEL, harbor.zone_open), harbor.open_market,
+		harbor.zone_open or harbor.level() < Harbor.ZONE_LEVEL or state.coins < Harbor.ZONE_PRICE, market)
+
+
+func _species_content() -> void:
+	var harbor: Node = state.harbor
+	_label(menu_content, "Выбери рыбу и встань в круг у нужного причала.", 16, MUTED)
 	for i in range(Harbor.SPECIES.size()):
 		var species: Dictionary = Harbor.SPECIES[i]
-		_label(menu_content, "%s · ур. %d · от %d монет\nСвежая: %d · копчёная: %d · поймано: %d" % [species["name"], species["level"], species["price"], harbor.raw_stock[i], harbor.smoked_stock[i], harbor.caught[i]], 16)
-		_development_button(("Выбрано: " if harbor.selected_species == i else "Ловить: ") + str(species["name"]), harbor.select_species.bind(i), not harbor.can_catch(i))
-		_development_button("Коптить: " + str(species["name"]), harbor.start_smoking.bind(i), not harbor.equipment[2] or harbor.raw_stock[i] < 1 or harbor.smoking_species != -1)
+		var stack := _card(species["name"], "Морской причал справа внизу" if i == 2 else "Речной причал слева")
+		_label(stack, "Уровень %d · от %d монет за продажу" % [species["level"], species["price"]], 16, GOLD)
+		_label(stack, "Свежая %d · копчёная %d\nПоймано %d" % [harbor.raw_stock[i], harbor.smoked_stock[i], harbor.caught[i]], 16, MUTED)
+		var catch_text := "Выбрано ✓" if harbor.selected_species == i and harbor.can_catch(i) else "Выбрать для ловли"
+		if not harbor.equipment[0]:
+			catch_text = "Нужна спортивная удочка"
+		elif harbor.level() < int(species["level"]):
+			catch_text = "Нужен уровень %d" % species["level"]
+		_development_button(catch_text, harbor.select_species.bind(i), not harbor.can_catch(i) or harbor.selected_species == i, stack)
+		var smoke_text := "Коптить · 1 рыба"
+		if not harbor.equipment[2]:
+			smoke_text = "Нужна коптильня"
+		elif harbor.smoking_species >= 0:
+			smoke_text = "Коптильня занята"
+		elif harbor.raw_stock[i] < 1:
+			smoke_text = "Сначала поймай рыбу"
+		_development_button(smoke_text, harbor.start_smoking.bind(i), not harbor.equipment[2] or harbor.raw_stock[i] < 1 or harbor.smoking_species != -1, stack)
 	if harbor.smoking_species >= 0:
-		_label(menu_content, "Копчение: %s · до 8 секунд. Прогресс сохраняется при выходе." % Harbor.SPECIES[harbor.smoking_species]["name"], 16, ACCENT)
-	_label(menu_content, "ЦЕЛИ ПРОМЫСЛА", 18, GOLD)
+		_label(menu_content, "Коптится %s · до 8 секунд. Можно закрыть окно." % Harbor.SPECIES[harbor.smoking_species]["name"], 16, ACCENT)
+
+
+func _upgrades_content() -> void:
+	_label(menu_content, "Улучшай здесь или на площадках острова.", 16, MUTED)
+	var names := ["Станок", "Скорость", "Переноска", "Доход"]
+	var hints := ["Быстрее разделывает рыбу", "Работники быстрее передвигаются", "Работники несут больше груза за рейс", "Больше монет за продажу филе"]
+	for i in range(4):
+		var stack := _card(names[i] + " · ур. %d" % state.upgrade_levels[i], hints[i])
+		var maxed: bool = state.upgrade_levels[i] >= S.MAX_UPGRADE_LEVEL
+		_development_button("Максимальный уровень" if maxed else _purchase_text(state.upgrade_prices[i]), _upgrade.bind(i, false), maxed or state.coins < state.upgrade_prices[i], stack)
+	var expansion_names := ["Расширить магазин", "Быстрая касса", "Новая территория"]
+	var expansion_hints := ["Больше мест для покупателей", "Быстрее обслуживание на кассе", "Открывает торговую зону острова"]
+	for i in range(3):
+		var stack := _card(expansion_names[i] + " · ур. %d" % state.expansion_levels[i], expansion_hints[i])
+		var maxed: bool = state.expansion_levels[i] >= S.EXPANSION_MAX_LEVELS[i]
+		_development_button("Максимальный уровень" if maxed else _purchase_text(state.expansion_prices[i]), _upgrade.bind(i, true), maxed or state.coins < state.expansion_prices[i], stack)
+
+
+func _upgrade(index: int, expansion: bool) -> void:
+	if expansion:
+		state.buy_expansion(index)
+	else:
+		state.upgrade(index)
+	_rebuild_menu()
+
+
+func _harbor_goals_content() -> void:
+	var harbor: Node = state.harbor
+	_label(menu_content, harbor.next_goal(), 18, ACCENT)
+	_label(menu_content, "Награды начисляются автоматически.", 16, MUTED)
 	var values: Array[int] = harbor.goal_values()
 	for i in range(Harbor.GOALS.size()):
 		var goal: Dictionary = Harbor.GOALS[i]
-		_label(menu_content, "%s %s · %d/%d · +%d монет" % ["✓" if harbor.goal_done[i] else "○", goal["name"], mini(values[i], goal["target"]), goal["target"], goal["reward"]], 16, ACCENT if harbor.goal_done[i] else TEXT)
+		var stack := _card(goal["name"])
+		_label(stack, "Получено ✓" if harbor.goal_done[i] else "%d / %d · +%d монет" % [mini(values[i], goal["target"]), goal["target"], goal["reward"]], 16, ACCENT if harbor.goal_done[i] else GOLD)
+
+
+func _current_menu_signature() -> String:
+	# Rebuild only when the visible data changes; leave scrolling untouched.
+	match menu_tab:
+		0: return str([state.coins, state.hired, state.prices])
+		1: return str([state.player_fish, state.player_fillets, state.fish_box, state.machine_input, state.machine_output, state.fillet_box])
+		2: return str([state.coins, state.player_fish_caught, state.worker_fish_caught, state.served, state.customers_served, state.customers_lost])
+		3: return str([state.coins, [state.harbor.equipment, state.harbor.raw_stock, state.harbor.smoked_stock, state.harbor.caught, state.harbor.goal_done, state.harbor.selected_species, state.harbor.zone_open, state.harbor.smoking_species, state.harbor.orders], state.harbor.level(), state.upgrade_levels, state.expansion_levels])
+	return ""
 
 
 func _build_workers_content() -> void:
 	_label(
 		menu_content,
-		"Нанимай работников для автоматизации",
+		"Работники ловят, переносят и продают рыбу за тебя.",
 		13,
 		MUTED
 	)
@@ -476,18 +608,22 @@ func _build_workers_content() -> void:
 		var count: int = int(state.hired[i])
 		var price: int = int(state.prices[i])
 
+		var role_hint: String = ["Ловит рыбу у причала", "Несёт рыбу к станку", "Несёт филе на склад", "Обслуживает покупателей"][i]
+		if state.coins < price and count < S.MAX_WORKERS_PER_ROLE:
+			role_hint += "\nЕщё %s монет для найма" % UITheme.number(price - state.coins)
 		_label(
 			stack,
-			"Работников: %d" % count,
+			"В команде: %d\n%s" % [count, role_hint],
 			13,
 			MUTED
 		)
 
 		var hire_button := Button.new()
 		hire_button.theme_type_variation = "PrimaryButton"
-		hire_button.text = "Нанять · %d монет" % price
+		hire_button.text = "Максимум работников" if count >= S.MAX_WORKERS_PER_ROLE else "Нанять · %s монет" % UITheme.number(price)
+		hire_button.clip_text = true
 		hire_button.custom_minimum_size.y = UITheme.TOUCH_SIZE
-		hire_button.disabled = state.coins < price
+		hire_button.disabled = state.coins < price or count >= S.MAX_WORKERS_PER_ROLE
 		hire_button.add_theme_color_override(
 			"font_color", BG
 		)
@@ -498,42 +634,45 @@ func _build_workers_content() -> void:
 		stack.add_child(hire_button)
 
 
-func _build_resources_content() -> void:
-	var lines := [
-		"У игрока — рыба: %d" % state.player_fish,
-		"У игрока — филе: %d" % state.player_fillets,
-		"Склад рыбы: %d" % state.fish_box,
-		"Станок — на входе: %d" % state.machine_input,
-		"Станок — готово: %d" % state.machine_output,
-		"Склад филе: %d" % state.fillet_box
-	]
+func _metric(parent: Node, title: String, value: int) -> void:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	var label := _label(row, title, 16, MUTED)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var counter := _label(row, str(value), 18)
+	counter.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	counter.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
-	for line in lines:
-		var card := PanelContainer.new()
-		card.add_theme_stylebox_override(
-			"panel", _style(CARD)
-		)
-		menu_content.add_child(card)
-		_label(card, line, 15)
+
+func _build_resources_content() -> void:
+	var cargo := _card("С собой")
+	_metric(cargo, "Рыба", state.player_fish)
+	_metric(cargo, "Филе", state.player_fillets)
+	var machine := _card("Производство")
+	_metric(machine, "Склад рыбы", state.fish_box)
+	_metric(machine, "В станке", state.machine_input)
+	_metric(machine, "Готовое филе", state.machine_output)
+	var stock := _card("Продажа")
+	_metric(stock, "Филе на складе", state.fillet_box)
+	_development_button("Запасы ценной рыбы →", _open_species)
+
+
+func _open_species() -> void:
+	development_tab = 1
+	_select_menu(3)
 
 
 func _build_stats_content() -> void:
-	var lines := [
-		"Монеты: %d" % state.coins,
-		"Поймано игроком: %d" % state.player_fish_caught,
-		"Поймано работниками: %d" % state.worker_fish_caught,
-		"Обслужено лодок: %d" % state.served,
-		"Обслужено покупателей: %d" % state.customers_served,
-		"Потеряно покупателей: %d" % state.customers_lost
-	]
-
-	for line in lines:
-		var card := PanelContainer.new()
-		card.add_theme_stylebox_override(
-			"panel", _style(CARD)
-		)
-		menu_content.add_child(card)
-		_label(card, line, 15)
+	var finances := _card("Баланс")
+	_metric(finances, "Монеты", state.coins)
+	var catch_stats := _card("Улов")
+	_metric(catch_stats, "Игрок", state.player_fish_caught)
+	_metric(catch_stats, "Команда", state.worker_fish_caught)
+	var sales := _card("Обслуживание")
+	_metric(sales, "Лодки", state.served)
+	_metric(sales, "Покупатели", state.customers_served)
+	_metric(sales, "Ушли без покупки", state.customers_lost)
 
 
 func _buy(role: int) -> void:
@@ -551,6 +690,8 @@ func _notice(value: String) -> void:
 
 	message.text = value
 	message.show()
+	message.move_to_front()
+	UITheme.reveal(message)
 	notice_time = 3.5
 
 
@@ -560,6 +701,8 @@ func _process(delta: float) -> void:
 	if update_time >= 0.2:
 		update_time = 0.0
 		refresh()
+		if overlay.visible and not _menu_interacting() and _menu_signature != _current_menu_signature():
+			_rebuild_menu()
 
 	if notice_time > 0.0:
 		notice_time -= delta
@@ -573,13 +716,13 @@ func refresh() -> void:
 	if state == null or money == null:
 		return
 
-	money.text = ("%d" if get_viewport().get_visible_rect().size.x < 500.0 else "%d монет") % state.coins
+	money.text = "%s монет" % UITheme.number(state.coins)
 	money.tooltip_text = "%d монет" % state.coins
-	inventory.text = "Рыба: %d    ·    Филе: %d    ·    Склад: %d" % [state.player_fish, state.player_fillets, state.fillet_box]
+	inventory.text = "Рыба %s · Филе %s · Склад %s" % [UITheme.number(state.player_fish), UITheme.number(state.player_fillets), UITheme.number(state.fillet_box)]
 	message.visible = notice_time > 0.0
 
 	if navigation != null:
-		task.text = "ЦЕЛЬ: " + str(
+		task.text = "→ " + str(
 			navigation.current_hint
 		)
 
@@ -595,7 +738,7 @@ func _refresh_xp() -> void:
 	var xp: int = int(progression.xp)
 	var required: int = int(progression.xp_required())
 
-	xp_label.text = "Ур. %d" % level
+	xp_label.text = "Ур. %d · %d/%d" % [level, xp, required] if required > 0 else "Ур. %d · MAX" % level
 	xp_progress.tooltip_text = "Опыт: %d / %d" % [xp, required]
 
 	if required > 0:
@@ -607,6 +750,7 @@ func _refresh_xp() -> void:
 
 
 func _refresh_boat() -> void:
+	boat_panel.visible = state.boat_state == "arriving" or state.boat_state == "ordering"
 	match String(state.boat_state):
 		"none":
 			boat_title.text = "Ожидаем лодку"

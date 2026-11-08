@@ -166,7 +166,7 @@ func _process(_delta: float) -> void:
 		var premium_market: Vector3 = harbor.MARKET
 		if player.position.distance_to(river) < 4.0 or player.position.distance_to(reef) < 4.0 or player.position.distance_to(premium_market) < 4.0:
 			target = reef if harbor.selected_species == 2 else river
-			current_hint = "Ценный улов: %s · Команда → Развитие" % harbor.SPECIES[harbor.selected_species]["name"]
+			current_hint = "Ценный улов: %s · Бизнес → Развитие" % harbor.SPECIES[harbor.selected_species]["name"]
 			if harbor.zone_open and player.position.distance_to(premium_market) < 4.0:
 				target = premium_market
 				current_hint = "Особые заказы: подойди к прилавку или найми продавца"

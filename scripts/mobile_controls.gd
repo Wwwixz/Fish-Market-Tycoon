@@ -48,6 +48,7 @@ func _build_zoom_controls() -> void:
 		button.custom_minimum_size = Vector2(UITheme.TOUCH_SIZE, UITheme.TOUCH_SIZE)
 		button.add_theme_font_size_override("font_size", 30)
 		button.focus_mode = Control.FOCUS_NONE
+		UITheme.button_feedback(button)
 		button.pressed.connect(_zoom.bind(amount))
 		zoom_controls.add_child(button)
 		zoom_buttons.append(button)
@@ -71,7 +72,7 @@ func _resize() -> void:
 		screen.x * 0.30
 	)
 	var safe := UITheme.safe_rect(get_viewport())
-	zoom_controls.position = Vector2(safe.end.x - UITheme.EDGE_MARGIN - UITheme.TOUCH_SIZE, safe.position.y + (safe.size.y - 140.0) * 0.5)
+	zoom_controls.position = Vector2(safe.end.x - UITheme.EDGE_MARGIN - UITheme.TOUCH_SIZE, safe.position.y + 104.0)
 
 	joystick.release()
 
