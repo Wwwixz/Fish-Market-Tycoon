@@ -7,7 +7,7 @@ signal save_failed(message: String)
 const Schema = preload("res://scripts/save_schema.gd")
 const SAVE_PATH := "user://fish_market_save.json"
 const AUTO_SAVE_INTERVAL := 30.0
-const SAVE_VERSION := 2
+const SAVE_VERSION := 4
 const MIN_CHECKPOINT_INTERVAL := 5.0
 const CHECKPOINT_DELAY := 0.75
 const MAX_SAVE_BYTES := 2 * 1024 * 1024
@@ -29,6 +29,7 @@ var _checkpoint_delay: float = -1.0
 var _since_last_save: float = MIN_CHECKPOINT_INTERVAL
 var _last_hash: String = ""
 var _saving: bool = false
+var _revision: int = 0
 
 
 func setup(game_state: Node, game_player: Node3D, worker_manager: Node3D) -> void:
@@ -39,6 +40,7 @@ func setup(game_state: Node, game_player: Node3D, worker_manager: Node3D) -> voi
 
 func _ready() -> void:
 	if state != null:
+		state.harbor.updated.connect(request_save)
 		for event in ["worker_hired", "upgrade_purchased", "expansion_purchased", "sale_completed", "customer_sale_completed"]:
 			state.connect(event, request_save)
 	if quest_manager != null:
@@ -108,7 +110,7 @@ func _read_snapshot(path: String) -> Dictionary:
 	if version > SAVE_VERSION:
 		return {"newer_version": true}
 	var data: Dictionary = parsed
-	if version == SAVE_VERSION:
+	if version >= 2:
 		var payload: Variant = parsed.get("payload")
 		var checksum: Variant = parsed.get("checksum")
 		if not payload is String or not checksum is String or payload.sha256_text() != checksum:
@@ -116,12 +118,31 @@ func _read_snapshot(path: String) -> Dictionary:
 		if parser.parse(payload) != OK:
 			return {}
 		var decoded: Variant = parser.data
-		if not decoded is Dictionary or not Schema.number(decoded.get("version"), SAVE_VERSION, SAVE_VERSION, true):
+		if not decoded is Dictionary or not Schema.number(decoded.get("version"), version, version, true):
 			return {}
 		data = decoded
 	if not Schema.valid(data):
 		return {}
-	return {"data": data, "checksum": parsed.get("checksum", "")}
+	return {"data": data, "checksum": parsed.get("checksum", ""),
+		"revision": int(data["revision"]) if version >= 3 else 0, "path": path}
+
+
+func _scan_snapshots() -> Dictionary:
+	var result := {"found_file": false, "newer_version": false, "best": {}}
+	# Equal revisions (including legacy files without one) retain stable path priority.
+	for path in [save_path, save_path + ".tmp", save_path + ".bak"]:
+		if not FileAccess.file_exists(path):
+			continue
+		result["found_file"] = true
+		var snapshot := _read_snapshot(path)
+		if snapshot.get("newer_version", false):
+			result["newer_version"] = true
+		if not snapshot.has("data"):
+			continue
+		var best: Dictionary = result["best"]
+		if best.is_empty() or snapshot["revision"] > best["revision"]:
+			result["best"] = snapshot
+	return result
 
 
 func load_game() -> Dictionary:
@@ -130,28 +151,24 @@ func load_game() -> Dictionary:
 	recovery_notice = ""
 	write_blocked = false
 	_last_hash = ""
-	var found_file := false
-	# A fully written pending snapshot can survive a crash before its final rename.
-	for path in [save_path, save_path + ".tmp", save_path + ".bak"]:
-		if not FileAccess.file_exists(path):
-			continue
-		found_file = true
-		var snapshot := _read_snapshot(path)
-		if snapshot.get("newer_version", false):
-			write_blocked = true
-			_fail("Сохранение от более новой версии игры. Автосохранение отключено.")
-			return {}
-		if not snapshot.has("data"):
-			continue
+	_revision = 0
+	var scan := _scan_snapshots()
+	if scan["newer_version"]:
+		write_blocked = true
+		_fail("Сохранение от более новой версии игры. Автосохранение отключено.")
+		return {}
+	var snapshot: Dictionary = scan["best"]
+	if snapshot.has("data"):
 		var data: Dictionary = snapshot["data"]
+		_revision = snapshot["revision"]
 		_apply_data(data)
 		if workers != null:
 			workers.restore_workers()
-		if path != save_path:
+		if snapshot["path"] != save_path:
 			recovery_notice = "Прогресс восстановлен из резервной копии"
 		loaded.emit()
 		return data
-	if found_file:
+	if scan["found_file"]:
 		write_blocked = true
 		_fail("Файлы сохранения повреждены. Автосохранение отключено, исходные файлы сохранены.")
 	return {}
@@ -165,6 +182,7 @@ func _restore_int_array(key: String, data: Dictionary, target: Array[int], minim
 
 
 func _apply_data(data: Dictionary) -> void:
+	state.harbor.load_save_data(data.get("harbor", {}))
 	state.coins = maxi(
 		0,
 		int(data.get("coins", 0))
@@ -357,6 +375,8 @@ func _apply_data(data: Dictionary) -> void:
 func get_save_data() -> Dictionary:
 	var data: Dictionary = {
 		"version": SAVE_VERSION,
+		"revision": maxi(1, _revision),
+		"harbor": state.harbor.get_save_data(),
 		"player_fish_caught": state.player_fish_caught,
 		"worker_fish_caught": state.worker_fish_caught,
 
@@ -443,14 +463,26 @@ func _write_snapshot() -> bool:
 		return _fail("Не удалось проверить прогресс. Предыдущее сохранение сохранено.")
 	var payload := JSON.stringify(data)
 	var checksum := payload.sha256_text()
-	var primary := _read_snapshot(save_path) if FileAccess.file_exists(save_path) else {}
-	if primary.get("newer_version", false):
+	var scan := _scan_snapshots()
+	if scan["newer_version"]:
 		write_blocked = true
 		return _fail("Сохранение от более новой версии игры. Автосохранение отключено.")
-	if checksum == _last_hash and primary.get("checksum", "") == checksum:
+	var best: Dictionary = scan["best"]
+	if checksum == _last_hash and best.get("path", "") == save_path and best.get("checksum", "") == checksum:
 		_checkpoint_delay = -1.0
 		elapsed = 0.0
 		return true
+	var next_revision := maxi(_revision, int(best.get("revision", 0))) + 1
+	if next_revision > Schema.MAX_VALUE:
+		return _fail("Достигнут предел ревизий сохранения. Предыдущее сохранение сохранено.")
+	data["revision"] = next_revision
+	payload = JSON.stringify(data)
+	checksum = payload.sha256_text()
+	var backup := save_path + ".bak"
+	# Preserve the newest valid source before opening .tmp with truncation.
+	if best.has("data") and best["path"] != backup:
+		if not _copy_backup(best["path"], backup):
+			return false
 	var pending := save_path + ".tmp"
 	var file := FileAccess.open(pending, FileAccess.WRITE)
 	if file == null:
@@ -461,21 +493,24 @@ func _write_snapshot() -> bool:
 	file.close()
 	if error != OK or not _read_snapshot(pending).has("data"):
 		return _fail("Ошибка проверки записи. Предыдущее сохранение сохранено.")
-	var backup := save_path + ".bak"
-	# Never rotate a corrupt primary over a healthy backup.
-	if primary.has("data") or not _read_snapshot(backup).has("data"):
-		var source := save_path if primary.has("data") else pending
-		var backup_pending := backup + ".tmp"
-		if DirAccess.copy_absolute(source, backup_pending) != OK:
-			return _fail("Не удалось записать резервную копию. Предыдущее сохранение сохранено.")
-		if not _read_snapshot(backup_pending).has("data") or DirAccess.rename_absolute(backup_pending, backup) != OK:
-			return _fail("Не удалось обновить резервную копию. Предыдущее сохранение сохранено.")
+	if not best.has("data") and not _copy_backup(pending, backup):
+		return false
 	if DirAccess.rename_absolute(pending, save_path) != OK:
 		return _fail("Не удалось обновить сохранение. Копия для восстановления сохранена.")
 	_last_hash = checksum
+	_revision = next_revision
 	last_error = ""
 	elapsed = 0.0
 	_since_last_save = 0.0
 	_checkpoint_delay = -1.0
 	saved.emit()
+	return true
+
+
+func _copy_backup(source: String, backup: String) -> bool:
+	var backup_pending := backup + ".tmp"
+	if DirAccess.copy_absolute(source, backup_pending) != OK:
+		return _fail("Не удалось записать резервную копию. Предыдущее сохранение сохранено.")
+	if not _read_snapshot(backup_pending).has("data") or DirAccess.rename_absolute(backup_pending, backup) != OK:
+		return _fail("Не удалось обновить резервную копию. Предыдущее сохранение сохранено.")
 	return true

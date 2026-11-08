@@ -1,13 +1,29 @@
 
 extends RefCounted
 
+const CACHE_LIMIT := 256
+static var _lit_materials: Dictionary = {}
+static var _unshaded_materials: Dictionary = {}
+static var _boxes: Dictionary = {}
+static var _spheres: Dictionary = {}
+static var _cylinders: Dictionary = {}
+static var _actor_parts: Dictionary = {}
+static var _actor_material: StandardMaterial3D
+
 
 static func material(
 	color: Color,
 	unshaded: bool = false
 ) -> StandardMaterial3D:
+	# Callers replace whole materials; cached resources must stay immutable.
+	var cache := _unshaded_materials if unshaded else _lit_materials
+	if cache.has(color):
+		return cache[color]
+	if cache.size() >= CACHE_LIMIT:
+		cache.clear()
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
+	cache[color] = m
 
 	if unshaded:
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -40,9 +56,13 @@ static func box(
 	color: Color
 ) -> MeshInstance3D:
 	var n := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-
-	mesh.size = size
+	if not _boxes.has(size):
+		if _boxes.size() >= CACHE_LIMIT:
+			_boxes.clear()
+		var shape := BoxMesh.new()
+		shape.size = size
+		_boxes[size] = shape
+	var mesh: BoxMesh = _boxes[size]
 	n.mesh = mesh
 	n.position = pos
 	n.material_override = material(color)
@@ -60,12 +80,16 @@ static func sphere(
 	color: Color
 ) -> MeshInstance3D:
 	var n := MeshInstance3D.new()
-	var mesh := SphereMesh.new()
-
-	mesh.radius = radius
-	mesh.height = radius * 2.0
-	mesh.radial_segments = 16
-	mesh.rings = 8
+	if not _spheres.has(radius):
+		if _spheres.size() >= CACHE_LIMIT:
+			_spheres.clear()
+		var shape := SphereMesh.new()
+		shape.radius = radius
+		shape.height = radius * 2.0
+		shape.radial_segments = 16
+		shape.rings = 8
+		_spheres[radius] = shape
+	var mesh: SphereMesh = _spheres[radius]
 
 	n.mesh = mesh
 	n.position = pos
@@ -85,12 +109,17 @@ static func cylinder(
 	color: Color
 ) -> MeshInstance3D:
 	var n := MeshInstance3D.new()
-	var mesh := CylinderMesh.new()
-
-	mesh.top_radius = radius
-	mesh.bottom_radius = radius
-	mesh.height = height
-	mesh.radial_segments = 16
+	var key := Vector2(radius, height)
+	if not _cylinders.has(key):
+		if _cylinders.size() >= CACHE_LIMIT:
+			_cylinders.clear()
+		var shape := CylinderMesh.new()
+		shape.top_radius = radius
+		shape.bottom_radius = radius
+		shape.height = height
+		shape.radial_segments = 16
+		_cylinders[key] = shape
+	var mesh: CylinderMesh = _cylinders[key]
 
 	n.mesh = mesh
 	n.position = pos
@@ -299,6 +328,9 @@ static func animated_person(
 			Color("#76543E")
 		)
 
+	# Keep the six animation pivots, but draw each rigid part as one surface.
+	for part in [body, left_arm, right_arm, left_leg, right_leg, crate]:
+		compact_rigid_part(part, color)
 	crate.visible = false
 
 	return {
@@ -310,6 +342,47 @@ static func animated_person(
 		"cargo_anchor": cargo_anchor,
 		"crate": crate
 	}
+
+
+static func compact_rigid_part(part: Node3D, color: Color) -> void:
+	var key := part.name + ":" + color.to_html(true)
+	var sources: Array[MeshInstance3D] = []
+	for child in part.get_children():
+		if child is MeshInstance3D:
+			sources.append(child)
+	if sources.is_empty():
+		return
+	if not _actor_parts.has(key):
+		if _actor_parts.size() >= CACHE_LIMIT:
+			_actor_parts.clear()
+		var surface := SurfaceTool.new()
+		surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for source in sources:
+			var arrays := source.mesh.surface_get_arrays(0)
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+			var normal_basis := source.transform.basis.inverse().transposed()
+			var tint: Color = source.material_override.albedo_color
+			for i in range(indices.size() if not indices.is_empty() else vertices.size()):
+				var index := indices[i] if not indices.is_empty() else i
+				surface.set_color(tint)
+				surface.set_normal((normal_basis * normals[index]).normalized())
+				surface.add_vertex(source.transform * vertices[index])
+		surface.index()
+		_actor_parts[key] = surface.commit()
+	if _actor_material == null:
+		_actor_material = StandardMaterial3D.new()
+		_actor_material.vertex_color_use_as_albedo = true
+		_actor_material.vertex_color_is_srgb = true
+		_actor_material.roughness = 0.83
+	var merged := MeshInstance3D.new()
+	merged.mesh = _actor_parts[key]
+	merged.material_override = _actor_material
+	part.add_child(merged)
+	for source in sources:
+		part.remove_child(source)
+		source.free()
 
 
 static func popup(

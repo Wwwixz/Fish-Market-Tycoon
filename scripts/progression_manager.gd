@@ -17,6 +17,7 @@ var initialized: bool = false
 
 func setup(game_state: Node) -> void:
 	state = game_state
+	state.harbor.progression = self
 
 
 func _ready() -> void:

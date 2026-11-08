@@ -37,7 +37,13 @@ static func flags(value: Variant, length: int) -> bool:
 
 
 static func valid(data: Dictionary) -> bool:
-	if not number(data.get("version"), 1, 2, true):
+	if not number(data.get("version"), 1, 4, true):
+		return false
+	if int(data["version"]) >= 3 and not number(data.get("revision"), 1, MAX_VALUE, true):
+		return false
+	if int(data["version"]) >= 4 and not valid_harbor(data.get("harbor")):
+		return false
+	if data.has("harbor") and not valid_harbor(data["harbor"]):
 		return false
 	for key in COUNT_KEYS:
 		if not number(data.get(key), 0, MAX_VALUE, true):
@@ -81,7 +87,7 @@ static func valid(data: Dictionary) -> bool:
 	for key in ["progression", "quests", "daily"]:
 		if data.has(key) and not data[key] is Dictionary:
 			return false
-		if int(data["version"]) == 2 and not data.has(key):
+		if int(data["version"]) >= 2 and not data.has(key):
 			return false
 	if data.has("progression"):
 		var progression: Dictionary = data["progression"]
@@ -118,3 +124,23 @@ static func valid(data: Dictionary) -> bool:
 			if daily["daily_progress"][i] > DAILY_TARGETS[i]:
 				return false
 	return true
+
+
+static func valid_harbor(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	for key in ["raw_stock", "smoked_stock", "caught"]:
+		if not integers(value.get(key), 3, 0, MAX_VALUE):
+			return false
+	if not flags(value.get("equipment"), 3) or not flags(value.get("goal_done"), 5):
+		return false
+	if not value.get("zone_open") is bool or not number(value.get("selected_species"), 0, 2, true):
+		return false
+	for key in ["orders", "smoked_total"]:
+		if not number(value.get(key), 0, MAX_VALUE, true):
+			return false
+	if not number(value.get("smoking_species"), -1, 2, true) or not number(value.get("smoking_elapsed"), 0, 8):
+		return false
+	if value["smoking_species"] == -1 and value["smoking_elapsed"] != 0:
+		return false
+	return value["smoking_species"] == -1 or value["equipment"][2]

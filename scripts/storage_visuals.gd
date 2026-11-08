@@ -351,6 +351,7 @@ func _create_fish(
 		Color("#263C42")
 	)
 
+	V.compact_rigid_part(item, color)
 	return item
 
 
@@ -396,6 +397,7 @@ func _create_fillet(
 		Color("#F9C8AC")
 	)
 
+	V.compact_rigid_part(item, Color("#EBA68D"))
 	return item
 
 

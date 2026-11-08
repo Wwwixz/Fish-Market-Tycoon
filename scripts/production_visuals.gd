@@ -30,6 +30,7 @@ var processing_particles: Array[Dictionary] = []
 var clock: float = 0.0
 var sale_count: int = 0
 var sale_label_timer: float = 0.0
+var _visible_output := -1
 
 
 func setup(game_state: Node) -> void:
@@ -361,11 +362,13 @@ func _update_stock() -> void:
 
 	if not is_instance_valid(fillet_display):
 		return
+	var amount: int = mini(state.machine_output, 9)
+	if amount == _visible_output:
+		return
+	_visible_output = amount
 
 	for child in fillet_display.get_children():
 		child.queue_free()
-
-	var amount: int = mini(state.machine_output, 9)
 
 	for i in range(amount):
 		var column: int = i % 3

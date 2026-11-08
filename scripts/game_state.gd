@@ -1,6 +1,15 @@
 
 extends Node
 
+const Harbor = preload("res://scripts/harbor_manager.gd")
+var harbor: Node
+
+
+func _ready() -> void:
+	harbor = Harbor.new()
+	harbor.setup(self)
+	add_child(harbor)
+
 signal changed
 signal notice(message: String)
 signal reward(amount: int, icon: String, color: Color, position: Vector3)

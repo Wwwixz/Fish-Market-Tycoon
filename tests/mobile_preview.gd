@@ -29,6 +29,8 @@ func _run() -> void:
 		await capture("hud-%dx%d" % [viewport_size.x, viewport_size.y])
 		scene.ui._open_menu()
 		await capture("menu-%dx%d" % [viewport_size.x, viewport_size.y])
+		scene.ui._select_menu(3)
+		await capture("development-%dx%d" % [viewport_size.x, viewport_size.y])
 		scene.quest_ui._open()
 		await capture("quests-%dx%d" % [viewport_size.x, viewport_size.y])
 		scene.quest_ui._close()

@@ -314,8 +314,8 @@ func refresh() -> void:
 		state.customer_service_duration()
 	]
 
-	if last_stock != state.fillet_box:
-		last_stock = state.fillet_box
+	if last_stock != mini(state.fillet_box, 6):
+		last_stock = mini(state.fillet_box, 6)
 		_refresh_display()
 
 	if last_capacity != state.market_capacity():

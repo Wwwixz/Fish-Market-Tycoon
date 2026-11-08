@@ -33,6 +33,15 @@ func _ready() -> void:
 	_create_buoys()
 	_create_gulls()
 	_create_clouds()
+	var animated: Array[Node3D] = []
+	animated.append_array(waves)
+	for entries in [water_ripples, gulls, clouds, plants]:
+		for entry in entries:
+			animated.append(entry["node"])
+	preload("res://scripts/static_batch.gd").build(self, animated)
+	for entries in [water_ripples, clouds, plants]:
+		for entry in entries:
+			preload("res://scripts/static_batch.gd").build(entry["node"], [])
 
 
 func _setup_lighting() -> void:
@@ -58,7 +67,8 @@ func _setup_lighting() -> void:
 
 		sun.shadow_enabled = true
 		sun.directional_shadow_mode = (
-			DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+			DirectionalLight3D.SHADOW_ORTHOGONAL if OS.has_feature("android")
+			else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 		)
 		sun.directional_shadow_max_distance = 65.0
 

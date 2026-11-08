@@ -7,6 +7,8 @@ const Quests = preload("res://scripts/quest_manager.gd")
 const Daily = preload("res://scripts/daily_manager.gd")
 const Saves = preload("res://scripts/save_manager.gd")
 const Schema = preload("res://scripts/save_schema.gd")
+const Visuals = preload("res://scripts/visuals.gd")
+const StaticBatch = preload("res://scripts/static_batch.gd")
 
 var failures: int = 0
 var checks: int = 0
@@ -77,7 +79,153 @@ func write_text(path: String, value: String) -> void:
 
 func envelope(data: Dictionary) -> String:
 	var payload := JSON.stringify(data)
-	return JSON.stringify({"version": 2, "payload": payload, "checksum": payload.sha256_text()})
+	return JSON.stringify({"version": data["version"], "payload": payload, "checksum": payload.sha256_text()})
+
+
+func test_visual_resource_reuse() -> void:
+	var parent := Node3D.new()
+	root.add_child(parent)
+	var first := Visuals.box(parent, Vector3.ONE, Vector3.ZERO, Color.RED)
+	var second := Visuals.box(parent, Vector3.ONE, Vector3.RIGHT, Color.RED)
+	var different := Visuals.box(parent, Vector3(2, 1, 1), Vector3.ZERO, Color.BLUE)
+	check(first.mesh == second.mesh and first.material_override == second.material_override, "identical primitives reuse geometry and material resources")
+	check(first.mesh != different.mesh and first.material_override != different.material_override, "different geometry and colors remain distinct")
+	second.position = Vector3.UP
+	second.scale = Vector3(2, 2, 2)
+	check(first.position == Vector3.ZERO and first.scale == Vector3.ONE, "shared geometry preserves independent animation transforms")
+	check(Visuals.material(Color.RED, true) != Visuals.material(Color.RED), "lit and unshaded materials stay separate")
+	var sphere := Visuals.sphere(parent, 0.3, Vector3.ZERO, Color.RED)
+	var sphere_copy := Visuals.sphere(parent, 0.3, Vector3.UP, Color.BLUE)
+	var cylinder := Visuals.cylinder(parent, 0.3, 1.0, Vector3.ZERO, Color.RED)
+	var cylinder_copy := Visuals.cylinder(parent, 0.3, 1.0, Vector3.UP, Color.BLUE)
+	check(sphere.mesh == sphere_copy.mesh and cylinder.mesh == cylinder_copy.mesh, "rounded primitives share immutable geometry")
+	parent.free()
+
+
+func test_static_batch_preserves_animation() -> void:
+	var parent := Node3D.new()
+	parent.position = Vector3(3, 2, 1)
+	root.add_child(parent)
+	var nested := Node3D.new()
+	nested.position = Vector3(2, 0, 0)
+	parent.add_child(nested)
+	var originals: Array[MeshInstance3D] = []
+	for i in range(3):
+		originals.append(Visuals.box(nested, Vector3.ONE, Vector3(i, 0, 0), Color.RED))
+	var animated := Node3D.new()
+	parent.add_child(animated)
+	var moving := Visuals.box(animated, Vector3.ONE, Vector3.ZERO, Color.RED)
+	var hidden := Visuals.box(parent, Vector3.ONE, Vector3.ZERO, Color.RED)
+	hidden.hide()
+	StaticBatch.build(parent, [animated])
+	var batch := parent.get_node_or_null("StaticBatch") as MeshInstance3D
+	check(batch != null, "static geometry is merged")
+	if batch != null:
+		var bounds: AABB = originals[0].global_transform * originals[0].mesh.get_aabb()
+		for source in originals:
+			bounds = bounds.merge(source.global_transform * source.mesh.get_aabb())
+		var actual: AABB = batch.global_transform * batch.mesh.get_aabb()
+		check(actual.position.is_equal_approx(bounds.position) and actual.size.is_equal_approx(bounds.size), "merged geometry preserves nested world bounds and excludes hidden/animated sources")
+	check(not originals[0].visible and moving.visible and not hidden.visible, "static sources hide while excluded animation and hidden objects retain visibility")
+	animated.position = Vector3.UP
+	check(moving.global_position == animated.global_position, "excluded geometry still follows animation parent")
+	check(batch != null and batch.material_override.vertex_color_use_as_albedo and batch.material_override.roughness == originals[0].material_override.roughness, "merged surface preserves source shading and uses vertex colors")
+	parent.free()
+
+
+func test_harbor_progression_and_save() -> void:
+	var f := fixture("harbor")
+	var harbor: Node = f.state.harbor
+	f.state.coins = 1000
+	f.quests.completed.assign([true, true, true])
+	f.quests.progress.assign([10, 5, 3])
+	f.daily.daily_done.assign([true, true, true])
+	f.daily.daily_progress.assign([15, 5, 3])
+	check(not harbor.buy_equipment(0) and f.state.coins == 1000, "gear level gate preserves money")
+	check(not harbor.catch_special(0) and not harbor.open_market(), "new fisheries and market start locked")
+	f.progression.level = 2
+	check(harbor.buy_equipment(0) and f.state.coins == 900, "rod purchase pays its milestone once")
+	check(not harbor.buy_equipment(0) and f.state.coins == 900, "owned equipment cannot be bought again")
+	check(not harbor.catch_special(1) and not harbor.catch_special(2), "higher species stay gated by level")
+	for _i in range(3):
+		check(harbor.catch_special(0), "unlocked perch can be caught")
+	check(harbor.raw_stock == [3, 0, 0] and harbor.caught == [3, 0, 0], "special catch records distinct stock and lifetime total")
+	check(f.state.player_fish_caught == 3 and f.state.player_fish == 0, "special catches advance personal statistics without entering generic inventory")
+	check(f.state.coins == 975, "first three special catches pay one milestone")
+	f.progression.level = 7
+	f.state.coins = 5000
+	check(harbor.buy_equipment(1) and harbor.buy_equipment(2) and harbor.open_market(), "advanced level unlocks cooler, smoker and premium market")
+	check(not harbor.open_market(), "premium market cannot be purchased twice")
+	check(harbor.select_species(2) and harbor.catch_special(2) and harbor.raw_stock[2] == 2, "cooler doubles tuna yield and selection is usable")
+	check(harbor.start_smoking(0) and not harbor.start_smoking(0), "smoker consumes one fish and blocks concurrent work")
+	harbor._process(4.0)
+	var money: int = f.state.coins
+	check(f.saves.save_game(), "new content and in-flight smoking save")
+	var g := fixture("harbor", true)
+	var restored: Node = g.state.harbor
+	check(g.state.coins == money and restored.equipment == [true, true, true] and restored.zone_open, "new content reload preserves purchases without rewards")
+	check(restored.smoking_species == 0 and restored.smoking_elapsed == 4.0 and restored.raw_stock[0] == 2, "in-flight smoking reload does not consume fish twice")
+	check(restored.selected_species == 2 and restored.raw_stock[2] == 2, "selected species and separate stocks survive reload")
+	restored._process(4.0)
+	check(restored.smoking_species == -1 and restored.smoked_stock[0] == 1 and restored.smoked_total == 1, "restored smoking finishes exactly once")
+	restored._process(20.0)
+	check(restored.smoked_stock[0] == 1, "idle smoker does not duplicate output")
+	var before: int = g.state.coins
+	check(restored.sell_order(0, 1, true, true) and g.state.coins == before + 54, "chef pays premium for smoked perch")
+	check(not restored.sell_order(0, 1, true, true) and g.state.coins == before + 54, "fulfilled stock cannot be sold twice")
+	check(not restored.sell_order(-1, 1, false, false) and not restored.sell_order(0, -1, false, false), "invalid orders cannot create money or stock")
+	check(Schema.valid(g.saves.get_save_data()), "new content snapshot satisfies full schema")
+	for field in ["raw_stock", "equipment", "smoking_elapsed", "zone_open"]:
+		var invalid: Dictionary = g.saves.get_save_data().duplicate(true)
+		invalid["harbor"][field] = "invalid"
+		check(not Schema.valid(invalid), "new content schema rejects invalid " + field)
+	var legacy: Dictionary = g.saves.get_save_data()
+	legacy["version"] = 3
+	legacy["revision"] = 100
+	legacy.erase("harbor")
+	write_text(g.saves.save_path, envelope(legacy))
+	g.saves.load_game()
+	check(g.state.coins == before + 54 and not restored.zone_open and restored.raw_stock == [0, 0, 0], "version 3 migration starts new content without changing old economy")
+	g.saves.start_saving()
+	check(g.saves.save_game() and g.saves._read_snapshot(g.saves.save_path).get("revision") == 101, "content migration preserves revision chronology")
+
+
+func test_harbor_world_interactions() -> void:
+	var scene = load("res://scenes/main.tscn").instantiate()
+	scene.save_path = artifacts.path_join("harbor-world.json")
+	root.add_child(scene)
+	fixtures.append(scene)
+	scene.process_mode = Node.PROCESS_MODE_DISABLED
+	scene.save_manager.ready_to_save = false
+	scene.progression.level = 7
+	var harbor: Node = scene.state.harbor
+	harbor.equipment.assign([true, true, true])
+	harbor.goal_done.assign([true, true, true, true, true])
+	harbor.zone_open = true
+	harbor.updated.emit()
+	scene.player.position = harbor.RIVER + Vector3(0, 0.5, 0)
+	scene.harbor_world._process(3.1)
+	check(harbor.raw_stock[0] == 2, "real river pier catches selected perch")
+	scene.state.controls_blocked = true
+	scene.harbor_world._process(6.0)
+	check(harbor.raw_stock[0] == 2, "modal blocks special fishing")
+	scene.state.controls_blocked = false
+	scene.player.position = harbor.REEF + Vector3(0, 0.5, 0)
+	scene.harbor_world._process(3.1)
+	check(harbor.raw_stock[0] == 2, "river species cannot be caught at sea pier")
+	harbor.select_species(2)
+	scene.harbor_world._process(3.1)
+	check(harbor.raw_stock[2] == 2, "real sea pier catches unlocked tuna")
+	check(scene.harbor_world.market_root.visible, "purchased premium market appears in world")
+	scene.state.hired[3] = 1
+	check(not scene.harbor_world.visitors.is_empty(), "opened market spawns visible special visitors")
+	var visitor: Dictionary = scene.harbor_world.visitors[0]
+	visitor["node"].position = harbor.MARKET + Vector3(0, 0.5, 1.4)
+	var before: int = scene.state.coins
+	scene.harbor_world._update_visitor(visitor, 2.1)
+	check(visitor["leaving"] and harbor.orders == 1 and scene.state.coins > before, "seller fulfills real visitor order from premium stock")
+	var actor := Visuals.animated_person(scene, Color("#527A91"))
+	check(actor["body"].get_child_count() == 6 and actor["left_arm"].get_child_count() == 1, "actor keeps animation pivots with compact rigid meshes")
 
 
 func test_worker_restoration() -> void:
@@ -251,7 +399,9 @@ func test_stale_pending_recovery() -> void:
 	var older := envelope(f.saves.get_save_data())
 	f.state.coins = 200
 	f.daily.daily_progress.assign([9, 3, 2])
-	var newer := envelope(f.saves.get_save_data())
+	var newer_data: Dictionary = f.saves.get_save_data()
+	newer_data["revision"] = 2
+	var newer := envelope(newer_data)
 	write_text(f.saves.save_path, newer)
 	write_text(f.saves.save_path + ".tmp", older)
 	write_text(f.saves.save_path + ".bak", newer)
@@ -259,17 +409,95 @@ func test_stale_pending_recovery() -> void:
 	check(f.saves.recovery_notice.is_empty(), "healthy primary does not report recovery")
 	write_text(f.saves.save_path, "{corrupt-newer-primary")
 	var g := fixture("stale-pending", true)
-	check(g.state.coins == 100 and g.daily.daily_progress == [7, 2, 1], "corrupt primary recovers internally consistent older pending progress")
-	check(not g.saves.write_blocked and not g.saves.recovery_notice.is_empty(), "older pending recovery is reported and allows saving")
+	check(g.state.coins == 200 and g.daily.daily_progress == [9, 3, 2], "newer backup wins over stale pending progress")
+	check(not g.saves.write_blocked and not g.saves.recovery_notice.is_empty(), "newest backup recovery is reported and allows saving")
 	check(FileAccess.get_file_as_string(g.saves.save_path + ".tmp") == older, "loading does not modify the recovery source")
-	check(g.saves.save_game(), "older recovered progress can replace corrupt primary")
+	check(g.saves.save_game(), "newest recovered progress can replace corrupt primary")
 	check(not FileAccess.file_exists(g.saves.save_path + ".tmp"), "successful recovery save commits pending file")
 	check(FileAccess.get_file_as_string(g.saves.save_path + ".bak") == newer, "saving recovered progress preserves a healthy existing backup")
 	var h := fixture("stale-pending", true)
-	check(h.state.coins == 100 and h.daily.daily_progress == [7, 2, 1], "second launch keeps recovered progress without reward duplication")
+	check(h.state.coins == 200 and h.daily.daily_progress == [9, 3, 2], "second launch keeps newest recovered progress without reward duplication")
 	write_text(h.saves.save_path, "{broken")
 	write_text(h.saves.save_path + ".tmp", "{incomplete")
 	check(not h.saves.load_game().is_empty() and h.state.coins == 200, "invalid pending snapshot falls through to healthy backup")
+
+
+func test_snapshot_revisions() -> void:
+	var f := fixture("revision-order")
+	var baseline: Dictionary = f.saves.get_save_data()
+	var paths := [f.saves.save_path, f.saves.save_path + ".tmp", f.saves.save_path + ".bak"]
+	for order in [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]:
+		for i in range(3):
+			var data: Dictionary = baseline.duplicate(true)
+			data["revision"] = order[i]
+			# Spending can reduce coins in the newest snapshot.
+			data["coins"] = 400 - order[i] * 100
+			write_text(paths[i], envelope(data))
+		var loaded: Dictionary = f.saves.load_game()
+		check(loaded.get("revision") == 3 and f.state.coins == 100, "highest revision wins for permutation %s" % [order])
+	for i in range(3):
+		var tied: Dictionary = baseline.duplicate(true)
+		tied["revision"] = 5
+		tied["coins"] = 100 + i
+		write_text(paths[i], envelope(tied))
+	check(f.saves.load_game().get("coins") == 100, "equal protected revisions prefer primary deterministically")
+	# Only pending survives; failure to back it up must leave it untouched.
+	write_text(paths[0], "{broken")
+	write_text(paths[2], "{broken")
+	var newest: Dictionary = baseline.duplicate(true)
+	newest["revision"] = 10
+	newest["coins"] = 42
+	var pending_text := envelope(newest)
+	write_text(paths[1], pending_text)
+	check(f.saves.load_game().get("revision") == 10, "sole valid pending snapshot loads")
+	f.saves.start_saving()
+	DirAccess.make_dir_absolute(paths[2] + ".tmp")
+	check(not f.saves.save_game(), "backup failure aborts before replacing recovered pending source")
+	check(FileAccess.get_file_as_string(paths[1]) == pending_text, "backup failure preserves sole valid pending snapshot")
+	DirAccess.remove_absolute(paths[2] + ".tmp")
+	check(f.saves.save_game(), "pending recovery saves after backup becomes writable")
+	check(f.saves._read_snapshot(paths[0]).get("revision") == 11, "revision advances from recovered pending snapshot")
+	check(f.saves._read_snapshot(paths[2]).get("revision") == 10, "newest pending is backed up before replacement")
+	f.state.coins = 12
+	check(f.saves.save_game() and f.saves._read_snapshot(paths[0]).get("revision") == 12, "changed snapshot advances revision again")
+	for invalid_revision in [0, -1, 1.5, "99", INF, Schema.MAX_VALUE + 1]:
+		var invalid: Dictionary = baseline.duplicate(true)
+		invalid["revision"] = invalid_revision
+		write_text(paths[1], envelope(invalid))
+		check(not f.saves._read_snapshot(paths[1]).has("data"), "invalid revision is rejected: %s" % invalid_revision)
+	# Equal legacy revisions have no reliable chronology; keep stable path priority.
+	var legacy: Dictionary = baseline.duplicate(true)
+	legacy["version"] = 2
+	legacy.erase("revision")
+	for i in range(3):
+		legacy["coins"] = 100 + i
+		write_text(paths[i], envelope(legacy))
+	check(f.saves.load_game().get("coins") == 100, "legacy ties prefer primary without using coins or file times")
+	f.saves.start_saving()
+	check(f.saves.save_game() and f.saves._read_snapshot(paths[0]).get("revision") == 1, "version 2 migrates to first protected revision")
+	var tampered: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(paths[0]))
+	var tampered_data: Dictionary = JSON.parse_string(tampered["payload"])
+	tampered_data["revision"] = 999
+	tampered["payload"] = JSON.stringify(tampered_data)
+	write_text(paths[1], JSON.stringify(tampered))
+	check(not f.saves._read_snapshot(paths[1]).has("data"), "revision tampering invalidates checksum")
+	for path in [paths[1], paths[2]]:
+		var original := FileAccess.get_file_as_string(path)
+		f.saves.load_game()
+		f.saves.start_saving()
+		write_text(path, JSON.stringify({"version": 999}))
+		check(not f.saves.save_game() and FileAccess.get_file_as_string(path) == JSON.stringify({"version": 999}), "future source appearing after load is preserved on save")
+		f.state.coins = 777
+		check(f.saves.load_game().is_empty() and f.saves.write_blocked and f.state.coins == 777, "future version in any recovery source blocks partial loading")
+		f.saves.start_saving()
+		check(not f.saves.save_game(), "future recovery source blocks writes")
+		write_text(path, original)
+	# Exhaustion fails without changing any valid snapshot.
+	newest["revision"] = Schema.MAX_VALUE
+	write_text(paths[1], envelope(newest))
+	f.saves.load_game()
+	f.saves.start_saving()
+	check(not f.saves.save_game() and f.saves._read_snapshot(paths[1]).get("revision") == Schema.MAX_VALUE, "revision exhaustion preserves recoverable source")
 
 
 func test_daily_clock_transitions() -> void:
@@ -317,9 +545,9 @@ func test_migration_and_autosave() -> void:
 	var g := fixture("legacy", true)
 	check(g.state.coins == 321 and g.quests.progress[0] == 6, "version 1 migrates money and quest progress")
 	check(g.state.player_fish_caught == 0 and g.state.worker_fish_caught == 0, "ambiguous legacy catches are not attributed to the player")
-	check(g.saves.save_game(), "migrated save writes version 2")
+	check(g.saves.save_game(), "migrated save writes current version")
 	var migrated: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(g.saves.save_path))
-	check(migrated["version"] == 2 and migrated.has("checksum"), "migration adds version and checksum envelope")
+	check(migrated["version"] == Saves.SAVE_VERSION and migrated.has("checksum"), "migration adds current version and checksum envelope")
 	var auto := fixture("autosave")
 	var writes := [0]
 	auto.saves.saved.connect(func(): writes[0] += 1)
@@ -469,11 +697,13 @@ func test_input_and_windows() -> void:
 		check(scene.world.info_panel.get_global_rect().end.y <= scene.ui.bottom_panel.get_global_rect().position.y, "context panel stays above HUD")
 		scene.player._update_camera(0.0, true)
 		check(scene.player.camera.keep_aspect == (Camera3D.KEEP_WIDTH if viewport_size.y > viewport_size.x else Camera3D.KEEP_HEIGHT), "camera preserves short axis on phones")
-		for tab in range(3):
+		for tab in range(4):
 			scene.ui._open_menu()
 			scene.ui._select_menu(tab)
+			await settle()
+			check(scene.ui.menu_window.get_global_rect().end.x <= viewport_size.x and scene.ui.menu_window.get_global_rect().end.y <= viewport_size.y, "all menu tabs including development fit viewport")
 			scene.quest_ui._open()
-			scene.quest_ui._select_tab(tab)
+			scene.quest_ui._select_tab(tab % 3)
 			await settle()
 			check(scene.quest_ui.window.get_global_rect().end.x <= viewport_size.x, "quest tabs fit viewport width")
 			check(scene.quest_ui.window.get_global_rect().end.y <= viewport_size.y, "quest tabs fit viewport height")
@@ -482,11 +712,16 @@ func test_input_and_windows() -> void:
 
 
 func _run() -> void:
+	test_visual_resource_reuse()
+	test_static_batch_preserves_animation()
+	test_harbor_progression_and_save()
+	test_harbor_world_interactions()
 	test_worker_restoration()
 	test_fishing_and_rewards()
 	test_daily_achievement_roundtrip()
 	test_recovery_and_validation()
 	test_stale_pending_recovery()
+	test_snapshot_revisions()
 	test_daily_clock_transitions()
 	test_migration_and_autosave()
 	test_purchase_zones_after_load()

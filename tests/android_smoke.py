@@ -56,7 +56,7 @@ def main():
     def read_save():
         raw = shell(f"run-as {PACKAGE} cat files/fish_market_save.json")
         outer = json.loads(raw)
-        assert outer["version"] == 2
+        assert outer["version"] == 4
         assert hashlib.sha256(outer["payload"].encode()).hexdigest() == outer["checksum"]
         return json.loads(outer["payload"])
 
@@ -148,7 +148,7 @@ def main():
         screenshot("final")
         collect_logs("mobile-layout")
         background()
-        assert read_save()["version"] == 2
+        assert read_save()["version"] == 4
         report = {"package": PACKAGE, "device": shell("getprop ro.product.model"),
                   "android": shell("getprop ro.build.version.release"), "screen": [width, height],
                   "safe_top_pixels": top, "passed": ["fullscreen screenshots", "safe area around camera cutout",
@@ -168,10 +168,14 @@ def main():
                 upgrade_levels=[1, 1, 1, 1], upgrade_prices=[50, 75, 100, 125],
                 expansion_levels=[1, 1, 0], expansion_prices=[150, 120, 200], progression={"level": 1, "xp": 0, "total_xp": 0})
     seed["quests"] = {"progress": [10, 5, 3], "completed": [True, True, True]}
+    seed["harbor"] = {"equipment": [False] * 3, "raw_stock": [0] * 3, "smoked_stock": [0] * 3,
+                      "caught": [0] * 3, "goal_done": [False] * 5, "zone_open": False,
+                      "selected_species": 0, "orders": 0, "smoked_total": 0,
+                      "smoking_species": -1, "smoking_elapsed": 0}
     seed["daily"] = {"day": shell("date +%F"), "daily_progress": [15, 5, 3], "daily_done": [True, True, True],
                      "achievement_done": [True, True, True]}
     payload = json.dumps(seed, ensure_ascii=False, separators=(",", ":"))
-    seeded_text = json.dumps({"version": 2, "payload": payload, "checksum": hashlib.sha256(payload.encode()).hexdigest()}, ensure_ascii=False)
+    seeded_text = json.dumps({"version": seed["version"], "payload": payload, "checksum": hashlib.sha256(payload.encode()).hexdigest()}, ensure_ascii=False)
     save_text(seeded_text)
     save_text(seeded_text, ".bak")
     print("Checking reloads, worker restoration and reward flags on the phone", flush=True)

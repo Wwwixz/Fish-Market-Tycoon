@@ -96,6 +96,12 @@ func _ready() -> void:
 	)
 
 	_build_info_panel()
+	var animated: Array[Node3D] = []
+	for prop in animated_props:
+		animated.append(prop["node"])
+	preload("res://scripts/static_batch.gd").build(self, animated)
+	for prop in animated:
+		preload("res://scripts/static_batch.gd").build(prop, [])
 
 
 func _environment() -> void:

@@ -19,6 +19,7 @@ func _ready() -> void:
 	_create_dock_details(S.FISHING)
 	_create_dock_details(S.CASH)
 	_create_water_details()
+	preload("res://scripts/static_batch.gd").build(self, water_details)
 
 
 func _create_dock_details(center: Vector3) -> void:

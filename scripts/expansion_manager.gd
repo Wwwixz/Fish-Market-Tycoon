@@ -154,6 +154,8 @@ func _build_pad(index: int) -> void:
 
 	label_node.visible = false
 	labels.append(label_node)
+	preload("res://scripts/static_batch.gd").build(icon_root, [])
+	preload("res://scripts/static_batch.gd").build(pad, [icon_root])
 
 
 func refresh() -> void:

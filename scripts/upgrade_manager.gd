@@ -111,6 +111,8 @@ func _build_pad(role: int) -> void:
 
 	label_node.visible = false
 	labels.append(label_node)
+	preload("res://scripts/static_batch.gd").build(prop, [])
+	preload("res://scripts/static_batch.gd").build(pad, [prop])
 
 
 func _machine_icon(parent: Node3D) -> void:

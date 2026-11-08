@@ -5,6 +5,7 @@ signal modal_opened
 signal modal_closed
 
 const UITheme = preload("res://scripts/ui_theme.gd")
+const Harbor = preload("res://scripts/harbor_manager.gd")
 
 const BG := Color("#172B32")
 const PANEL := Color("#203941")
@@ -53,6 +54,8 @@ var menu_tab: int = 0
 
 var notice_time: float = 0.0
 var update_time: float = 0.0
+var _development_refresh_pending := false
+var _style_cache: Dictionary = {}
 
 
 func setup(
@@ -66,10 +69,16 @@ func setup(
 
 
 func _style(color: Color, radius: int = 14) -> StyleBoxFlat:
+	var key := color.to_html(true) + ":" + str(radius)
+	if _style_cache.has(key):
+		return _style_cache[key]
+	if _style_cache.size() >= 128:
+		_style_cache.clear()
 	var s := StyleBoxFlat.new()
 	s.bg_color = color
 	s.set_corner_radius_all(radius)
 	s.set_content_margin_all(0 if radius <= 6 else 14)
+	_style_cache[key] = s
 	return s
 
 
@@ -121,6 +130,9 @@ func _ready() -> void:
 
 	if state != null:
 		state.notice.connect(_notice)
+		state.harbor.updated.connect(_queue_development_refresh)
+	if progression != null:
+		progression.level_up.connect(_queue_development_refresh)
 
 	refresh()
 
@@ -269,9 +281,9 @@ func _build_menu() -> void:
 	var tabs := HBoxContainer.new()
 	layout.add_child(tabs)
 
-	for i in range(3):
+	for i in range(4):
 		var b := Button.new()
-		b.text = ["Команда", "Ресурсы", "Статистика"][i]
+		b.text = ["Команда", "Ресурсы", "Статистика", "Развитие"][i]
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.custom_minimum_size.y = 56
 		b.add_theme_font_size_override("font_size", 16)
@@ -326,7 +338,7 @@ func _resize() -> void:
 	menu_window.offset_top = center_offset.y - window_height / 2.0
 	menu_window.offset_bottom = center_offset.y + window_height / 2.0
 	for i in range(menu_tabs.size()):
-		menu_tabs[i].text = ["Люди", "Запасы", "Итоги"][i] if screen.x < 440.0 else ["Команда", "Ресурсы", "Статистика"][i]
+		menu_tabs[i].text = ["Люди", "Запасы", "Итоги", "Рост"][i] if screen.x < 440.0 else ["Команда", "Ресурсы", "Статистика", "Развитие"][i]
 		menu_tabs[i].add_theme_font_size_override("font_size", 14 if screen.x < 440.0 else 16)
 
 
@@ -383,6 +395,59 @@ func _rebuild_menu() -> void:
 			_build_resources_content()
 		2:
 			_build_stats_content()
+		3:
+			_build_development_content()
+
+
+func _queue_development_refresh(_value: Variant = null) -> void:
+	if overlay.visible and menu_tab == 3 and not _development_refresh_pending:
+		_development_refresh_pending = true
+		_refresh_development.call_deferred()
+
+
+func _refresh_development() -> void:
+	_development_refresh_pending = false
+	if overlay.visible and menu_tab == 3:
+		_rebuild_menu()
+
+
+func _development_button(text: String, action: Callable, disabled: bool = false) -> void:
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size.y = UITheme.TOUCH_SIZE
+	button.add_theme_font_size_override("font_size", 16)
+	button.clip_text = true
+	button.disabled = disabled
+	button.pressed.connect(action)
+	menu_content.add_child(button)
+
+
+func _build_development_content() -> void:
+	var harbor: Node = state.harbor
+	_label(menu_content, "НОВЫЙ ПРОМЫСЕЛ · уровень %d" % harbor.level(), 20, GOLD)
+	_label(menu_content, "Окунь и лосось: речной причал слева. Тунец: морской причал справа внизу. Ловля начинается у цветного круга.", 16, MUTED)
+	_label(menu_content, harbor.next_goal(), 18, ACCENT)
+	for i in range(Harbor.EQUIPMENT.size()):
+		var item: Dictionary = Harbor.EQUIPMENT[i]
+		_label(menu_content, "%s · ур. %d · %d монет\n%s" % [item["name"], item["level"], item["price"], item["hint"]], 16)
+		_development_button("Куплено" if harbor.equipment[i] else "Купить · %d монет" % item["price"], harbor.buy_equipment.bind(i),
+			harbor.equipment[i] or harbor.level() < int(item["level"]) or state.coins < int(item["price"]))
+	_label(menu_content, "ГАСТРОНОМИЧЕСКИЙ РЫНОК · ур. 3 · 600 монет\nСлева внизу острова. Заказы выполняет продавец или игрок у прилавка.", 16, GOLD)
+	_development_button("Рынок открыт" if harbor.zone_open else "Открыть рынок", harbor.open_market,
+		harbor.zone_open or harbor.level() < Harbor.ZONE_LEVEL or state.coins < Harbor.ZONE_PRICE)
+	_label(menu_content, "ВЫБОР РЫБЫ И ЗАПАСЫ", 18, GOLD)
+	for i in range(Harbor.SPECIES.size()):
+		var species: Dictionary = Harbor.SPECIES[i]
+		_label(menu_content, "%s · ур. %d · от %d монет\nСвежая: %d · копчёная: %d · поймано: %d" % [species["name"], species["level"], species["price"], harbor.raw_stock[i], harbor.smoked_stock[i], harbor.caught[i]], 16)
+		_development_button(("Выбрано: " if harbor.selected_species == i else "Ловить: ") + str(species["name"]), harbor.select_species.bind(i), not harbor.can_catch(i))
+		_development_button("Коптить: " + str(species["name"]), harbor.start_smoking.bind(i), not harbor.equipment[2] or harbor.raw_stock[i] < 1 or harbor.smoking_species != -1)
+	if harbor.smoking_species >= 0:
+		_label(menu_content, "Копчение: %s · до 8 секунд. Прогресс сохраняется при выходе." % Harbor.SPECIES[harbor.smoking_species]["name"], 16, ACCENT)
+	_label(menu_content, "ЦЕЛИ ПРОМЫСЛА", 18, GOLD)
+	var values: Array[int] = harbor.goal_values()
+	for i in range(Harbor.GOALS.size()):
+		var goal: Dictionary = Harbor.GOALS[i]
+		_label(menu_content, "%s %s · %d/%d · +%d монет" % ["✓" if harbor.goal_done[i] else "○", goal["name"], mini(values[i], goal["target"]), goal["target"], goal["reward"]], 16, ACCENT if harbor.goal_done[i] else TEXT)
 
 
 func _build_workers_content() -> void:

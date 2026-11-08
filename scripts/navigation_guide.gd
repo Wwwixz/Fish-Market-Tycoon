@@ -159,6 +159,17 @@ func _process(_delta: float) -> void:
             "Выйди из синего квадрата и зайди снова"
 		)
 
+	var harbor: Node = state.harbor
+	if harbor.equipment[0] and not player.fishing and state.player_fish == 0 and state.player_fillets == 0:
+		var river: Vector3 = harbor.RIVER
+		var reef: Vector3 = harbor.REEF
+		var premium_market: Vector3 = harbor.MARKET
+		if player.position.distance_to(river) < 4.0 or player.position.distance_to(reef) < 4.0 or player.position.distance_to(premium_market) < 4.0:
+			target = reef if harbor.selected_species == 2 else river
+			current_hint = "Ценный улов: %s · Команда → Развитие" % harbor.SPECIES[harbor.selected_species]["name"]
+			if harbor.zone_open and player.position.distance_to(premium_market) < 4.0:
+				target = premium_market
+				current_hint = "Особые заказы: подойди к прилавку или найми продавца"
 	var start: Vector3 = player.global_position
 	start.y = 0.0
 

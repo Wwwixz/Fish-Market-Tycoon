@@ -50,6 +50,7 @@ var quest_manager: Node
 var quest_ui: CanvasLayer
 var daily_manager: Node
 var mobile_controls: CanvasLayer
+var harbor_world: Node3D
 
 
 func _ready() -> void:
@@ -154,6 +155,9 @@ func _ready() -> void:
 	customer_manager.name = "CustomerManager"
 	customer_manager.call("setup", state, player)
 	add_child(customer_manager)
+	harbor_world = preload("res://scripts/harbor_world.gd").new()
+	harbor_world.setup(state, player)
+	add_child(harbor_world)
 
 	expansion_manager = ExpansionManager.new()
 	expansion_manager.name = "ExpansionManager"
