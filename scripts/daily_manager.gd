@@ -22,6 +22,8 @@ var daily_done: Array[bool] = [false, false, false]
 var achievement_done: Array[bool] = [false, false, false]
 var day_timer: float = 0.0
 var loading: bool = true
+# Replaceable in tests so calendar transitions never depend on the host clock.
+var date_provider: Callable = Time.get_date_string_from_system
 
 
 func setup(game_state: Node) -> void:
@@ -29,7 +31,7 @@ func setup(game_state: Node) -> void:
 
 
 func _ready() -> void:
-	day = Time.get_date_string_from_system()
+	day = date_provider.call()
 
 	if state == null:
 		return
@@ -59,7 +61,7 @@ func _process(delta: float) -> void:
 
 
 func _check_day() -> void:
-	var today: String = Time.get_date_string_from_system()
+	var today: String = date_provider.call()
 
 	# Moving the clock backwards must not make the same rewards available again.
 	if today <= day:

@@ -27,7 +27,7 @@ func check(condition: bool, description: String) -> void:
 		printerr("FAIL: ", description)
 
 
-func fixture(name: String, restore: bool = false) -> Dictionary:
+func fixture(name: String, restore: bool = false, date_provider: Callable = Callable()) -> Dictionary:
 	var holder := Node.new()
 	holder.process_mode = Node.PROCESS_MODE_DISABLED
 	root.add_child(holder)
@@ -47,6 +47,8 @@ func fixture(name: String, restore: bool = false) -> Dictionary:
 	quests.setup(state)
 	holder.add_child(quests)
 	var daily := Daily.new()
+	if date_provider.is_valid():
+		daily.date_provider = date_provider
 	daily.setup(state)
 	holder.add_child(daily)
 	var saves := Saves.new()
@@ -242,6 +244,66 @@ func test_recovery_and_validation() -> void:
 	check(FileAccess.get_file_as_string(failed.saves.save_path) == original, "write failure preserves existing primary")
 
 
+func test_stale_pending_recovery() -> void:
+	var f := fixture("stale-pending")
+	f.state.coins = 100
+	f.daily.daily_progress.assign([7, 2, 1])
+	var older := envelope(f.saves.get_save_data())
+	f.state.coins = 200
+	f.daily.daily_progress.assign([9, 3, 2])
+	var newer := envelope(f.saves.get_save_data())
+	write_text(f.saves.save_path, newer)
+	write_text(f.saves.save_path + ".tmp", older)
+	write_text(f.saves.save_path + ".bak", newer)
+	check(not f.saves.load_game().is_empty() and f.state.coins == 200, "healthy primary takes priority over stale pending snapshot")
+	check(f.saves.recovery_notice.is_empty(), "healthy primary does not report recovery")
+	write_text(f.saves.save_path, "{corrupt-newer-primary")
+	var g := fixture("stale-pending", true)
+	check(g.state.coins == 100 and g.daily.daily_progress == [7, 2, 1], "corrupt primary recovers internally consistent older pending progress")
+	check(not g.saves.write_blocked and not g.saves.recovery_notice.is_empty(), "older pending recovery is reported and allows saving")
+	check(FileAccess.get_file_as_string(g.saves.save_path + ".tmp") == older, "loading does not modify the recovery source")
+	check(g.saves.save_game(), "older recovered progress can replace corrupt primary")
+	check(not FileAccess.file_exists(g.saves.save_path + ".tmp"), "successful recovery save commits pending file")
+	check(FileAccess.get_file_as_string(g.saves.save_path + ".bak") == newer, "saving recovered progress preserves a healthy existing backup")
+	var h := fixture("stale-pending", true)
+	check(h.state.coins == 100 and h.daily.daily_progress == [7, 2, 1], "second launch keeps recovered progress without reward duplication")
+	write_text(h.saves.save_path, "{broken")
+	write_text(h.saves.save_path + ".tmp", "{incomplete")
+	check(not h.saves.load_game().is_empty() and h.state.coins == 200, "invalid pending snapshot falls through to healthy backup")
+
+
+func test_daily_clock_transitions() -> void:
+	var clock := ["2026-11-08"]
+	var provider := func() -> String: return clock[0]
+	var f := fixture("daily-clock", false, provider)
+	f.daily._add_daily(0, 15)
+	check(f.state.coins == 75 and f.daily.daily_done[0], "controlled date pays first daily reward once")
+	clock[0] = "2026-11-07"
+	f.daily._process(10.0)
+	f.daily._add_daily(0, 15)
+	check(f.daily.day == "2026-11-08" and f.state.coins == 75, "rollback during play preserves paid day and reward")
+	check(f.saves.save_game(), "rollback state saves")
+	var g := fixture("daily-clock", true, provider)
+	g.daily._add_daily(0, 15)
+	check(g.daily.day == "2026-11-08" and g.daily.daily_done[0] and g.state.coins == 75, "rollback across restart does not reopen rewards")
+	clock[0] = "2026-11-08"
+	g.daily._check_day()
+	check(g.daily.daily_done[0], "returning to saved date does not reset rewards")
+	clock[0] = "2026-11-09"
+	g.daily._process(10.0)
+	check(g.daily.daily_progress == [0, 0, 0] and g.daily.daily_done == [false, false, false], "next calendar day resets all daily progress")
+	g.daily._add_daily(0, 15)
+	g.daily._add_daily(0, 15)
+	check(g.state.coins == 150, "next day pays exactly one additional reward")
+	clock[0] = "2026-12-01"
+	g.daily._check_day()
+	check(g.state.coins == 150 and g.daily.daily_progress == [0, 0, 0], "skipped days do not award unearned catch-up rewards")
+	check(g.saves.save_game(), "forward date saves its high-water mark")
+	clock[0] = "2026-11-09"
+	var h := fixture("daily-clock", true, provider)
+	check(h.daily.day == "2026-12-01", "restart retains future day until device calendar catches up")
+
+
 func test_migration_and_autosave() -> void:
 	var f := fixture("legacy")
 	f.state.coins = 321
@@ -392,7 +454,8 @@ func test_input_and_windows() -> void:
 	escape.pressed = true
 	root.push_input(escape, true)
 	check(not scene.ui.overlay.visible and not scene.state.controls_blocked, "Escape closes modal and unblocks controls")
-	for viewport_size in [Vector2i(360, 640), Vector2i(720, 1280), Vector2i(1280, 720)]:
+	for viewport_size in [Vector2i(320, 568), Vector2i(360, 640), Vector2i(480, 1067),
+			Vector2i(720, 1280), Vector2i(800, 1280), Vector2i(1024, 768), Vector2i(1280, 720)]:
 		root.content_scale_size = viewport_size
 		root.size = viewport_size
 		await settle()
@@ -423,6 +486,8 @@ func _run() -> void:
 	test_fishing_and_rewards()
 	test_daily_achievement_roundtrip()
 	test_recovery_and_validation()
+	test_stale_pending_recovery()
+	test_daily_clock_transitions()
 	test_migration_and_autosave()
 	test_purchase_zones_after_load()
 	await test_input_and_windows()
